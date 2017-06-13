@@ -1,4 +1,4 @@
-from lineage_separation import partition_tree, transfer_score, name_internal_nodes, convert_to_lineages, annotate_tree, label_nodes
+from src.lineage_separation import partition_tree, transfer_score, name_internal_nodes, convert_to_lineages, annotate_tree, label_nodes
 import getopt
 import sys
 import ete2
@@ -28,7 +28,10 @@ if __name__ == "__main__":
     return_forest = False
     species_tree = None
     gene_tree = None
-    opts, args = getopt.getopt(sys.argv[1:], "g:s:f")
+    if len(sys.argv) <= 1:
+        print help_text
+        quit()
+    opts, args = getopt.getopt(sys.argv[1:], "g:s:fh")
     for opt, arg in opts:
         if opt == '-g':
             gene_tree = arg
@@ -36,6 +39,9 @@ if __name__ == "__main__":
             species_tree = arg
         elif opt == '-f':
             return_forest = True
+        elif opt == '-h':
+            print help_text
+            quit()
 
     if gene_tree[-1] != ';':
         gene_tree += ';'
