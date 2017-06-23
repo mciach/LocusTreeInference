@@ -48,8 +48,8 @@ if __name__ == "__main__":
     if species_tree[-1] != ';':
         species_tree += ';'
 
-    species_tree = ete2.Tree(species_tree, format=8)
-    gene_tree = ete2.Tree(gene_tree, format=2)
+    species_tree = ete2.Tree(species_tree)
+    gene_tree = ete2.Tree(gene_tree)
 
     gene_tree, forest = partition_tree(gene_tree, species_tree)
 
