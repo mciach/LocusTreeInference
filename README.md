@@ -8,7 +8,7 @@ Locus Tree Inference in parsimony framework.
     the supplied species tree (both in Newick format).
     The names of the leaves of the gene tree have to correspond to the names of the leaves of the species tree.
 ## EXAMPLE
->   python decompose_history.py -g '((a, c), d), (a, b));' -s '((a, b), (c, d));'
+>   python decompose_history.py -g '(((a, c), d), (a, b));' -s '((a, b), (c, d));'
 ## OPTIONS
     -f: Return forest
         Returns the forest obtained after decomposition.
