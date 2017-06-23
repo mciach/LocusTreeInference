@@ -6,9 +6,9 @@ Locus Tree Inference in parsimony framework.
 ## DESCRIPTION
     Decomposes the evolutionary history of loci in the gene tree, based on
     the supplied species tree (both in Newick format).
-    If the species tree's internal nodes are named, then those names are used.
-    Otherwise, new names are created by concatenating names of leafs.
-    Currently, the ranks for the species tree are created automatically. 
+    The names of the leaves of the gene tree have to correspond to the names of the leaves of the species tree.
+## EXAMPLE
+>   python decompose_history.py -g '((a, c), d), (a, b));' -s '((a, b), (c, d));'
 ## OPTIONS
     -f: Return forest
         Returns the forest obtained after decomposition.
