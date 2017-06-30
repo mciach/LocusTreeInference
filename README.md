@@ -33,7 +33,7 @@ where `GENE TREE` and `SPECIES TREE` are strings encoding trees in Newick format
 The names of leaves of the have to correspond to the names of leaves of the species tree, possibly with an identifier after an underscore.
 Running this command will return a forest of subtrees resulting from decomposition of the GENE TREE.
 
-##### Example 
+### Example 
 
 ```shell 
 python decompose_history.py -f -g '(((a, c), d), (a, b));' -s '((a, b), (c, d));'
