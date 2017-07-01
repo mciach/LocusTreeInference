@@ -64,4 +64,5 @@ The annotation is designed for a visualisation software, which will be availiabl
 ## Licensing and Credit
 
 The software is availiable under General Public Licence 3.0. 
-If you use the Locus Tree Inference in your work, please cite our article, which will be availiable here in September 2017. 
+If you use the Locus Tree Inference in your work, please cite:
+*Michał Ciach, Anna Muszewska, Paweł Górecki*, Detecting Locus Acquisition Events in Gene Trees, Proc. of WABI 2017
