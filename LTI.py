@@ -1,4 +1,4 @@
-from src.lineage_separation import partition_tree, transfer_score, name_internal_nodes, convert_to_lineages, annotate_tree, label_nodes
+from src.lineage_separation import partition_tree, transfer_score
 import getopt
 import sys
 import ete2
@@ -13,6 +13,10 @@ DESCRIPTION
     the supplied species tree.
     If the species tree's internal nodes are named, then those names are used.
     Otherwise, new names are created by concatenating names of leafs.
+    Species tree needs to contain only the names of nodes (no supports, branches etc.)
+    By default, this requirements holds also for gene trees. If you wish to
+    preserve branch lenghts and/or supports in the results, please
+    indicate the input gene tree format (as specified by ete3 documentation). 
 OPTIONS
     -f: Return forest
         Returns the forest obtained after decomposition.
@@ -20,6 +24,8 @@ OPTIONS
         is the first observation of a new loci (NHX new_locus), the embedding
         of the node into the species tree given by the species tree's node name (NHX embedding),
         and the post-hoc transfer score (NHX score).
+    -e: Gene tree format
+        Newick format of the input gene tree. Default: 9 (leaf names only)
 
 """
 
@@ -28,10 +34,11 @@ if __name__ == "__main__":
     return_forest = False
     species_tree = None
     gene_tree = None
+    gene_format = 9
     if len(sys.argv) <= 1:
         print help_text
         quit()
-    opts, args = getopt.getopt(sys.argv[1:], "g:s:fh")
+    opts, args = getopt.getopt(sys.argv[1:], "g:s:e:fh")
     for opt, arg in opts:
         if opt == '-g':
             gene_tree = arg
@@ -42,15 +49,17 @@ if __name__ == "__main__":
         elif opt == '-h':
             print help_text
             quit()
+        elif opt == '-e':
+            gene_format = int(arg)
 
-    if gene_tree[-1] != ';':
-        gene_tree += ';'
-    if species_tree[-1] != ';':
-        species_tree += ';'
+    # if gene_tree[-1] != ';':
+    #     gene_tree += ';'
+    # if species_tree[-1] != ';':
+    #     species_tree += ';'
 
-    species_tree = ete2.Tree(species_tree)
-    gene_tree = ete2.Tree(gene_tree)
-
+    species_tree = ete2.Tree(species_tree, format=8)
+    gene_tree = ete2.Tree(gene_tree, format=gene_format)
+    
     gene_tree, forest = partition_tree(gene_tree, species_tree)
 
     for n in gene_tree.traverse():
@@ -66,5 +75,5 @@ if __name__ == "__main__":
     if return_forest:
         print ' '.join(f.write(format=9) for f in forest)
     else:
-        print gene_tree.write(format=2, features=["embedding", "new_locus", "score", "I", "P"], format_root_node=True)
+        print gene_tree.write(format=gene_format, features=["embedding", "new_locus", "score", "I", "P"], format_root_node=True)
 
