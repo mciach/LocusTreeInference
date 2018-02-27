@@ -1,9 +1,5 @@
-import getopt, sys, ete2
+import ete2
 from warnings import warn
-import string
-from matplotlib import pyplot as plt
-import numpy as np
-from time import time
 
 
 class Decomposition(object):
@@ -13,11 +9,12 @@ class Decomposition(object):
         :param gene_tree: ete2.Tree
         :param species_tree: ete2.Tree
         :param roots: list
-            A list of identifiers (in post-order numbering) of the roots of subtrees from the decomposition forest.
+            A list of identifiers (in post-order numbering) of the roots of trees from the decomposition forest.
         """
         self.G = gene_tree
         for i, g in enumerate(self.G.traverse(strategy="postorder")):
             g.nid = i
+        self.G_labelled = False # whether G has been labelled with raw I/P mappings
         self.S = species_tree
         self.roots = sorted(roots)
         self.F = []  # forest
@@ -125,16 +122,17 @@ class Decomposition(object):
         for s in S.traverse():
             s.lastvisited = None
 
+        leaves = [l for l in L]
         for i in range(1, d + 1):
-            for g in L:
-                if smap[g].rank == i:
-                    if smap[g].lastvisited is not None:
-                        p = G.get_common_ancestor(g, smap[g].lastvisited)
-                        locus_set = [p.locus_id] + [c.locus_id for c in p.children]
-                        if p.P is None and {g.locus_id, smap[g].lastvisited.locus_id}.issubset(locus_set):
-                            p.P = i
-                    smap[g].lastvisited = g
-                    smap[g] = smap[g].up
+            for lid, l1 in enumerate(leaves):
+                if smap[l1].rank == i:
+                    for l2 in leaves[(lid+1):]:
+                        if smap[l2] == smap[l1]:
+                            p = l1.get_common_ancestor(l2)
+                            locus_set = [p.locus_id] + [c.locus_id for c in p.children]
+                            if p.P is None and  {l1.locus_id, l2.locus_id}.issubset(locus_set):
+                                p.P = i
+                    smap[l1] = smap[l1].up
 
     def _label_source_nodes(self):
         """
@@ -181,13 +179,17 @@ class Decomposition(object):
         if self.F:
             return self.F
         else:
+            # G = self.G.copy()
+            # for r in self.roots:
+            #     self.F.append(G.search_nodes(nid=r)[0].detach())
+            #     while len(G.children) == 1:  # moving down the root
+            #         G = G.children[0]
+            #     G.prune(G)
+            # return self.F
             G = self.G.copy()
-            for r in self.roots:
-                self.F.append( G.search_nodes(nid=r)[0].detach() )
-                while len(G.children) == 1:
-                    G = G.children[0]
-                G.prune(G)
-            self.F.append(G)
+            self.F = [g.detach() for g in G.traverse() if g.nid in self.roots]
+            self.F = [f.children[0] if len(f.children) == 1 else f for f in self.F]  # removing upper single nodes
+            map(lambda x: x.prune(x), self.F)  # removing internal single nodes
             return self.F
 
     def roots(self):
@@ -197,13 +199,36 @@ class Decomposition(object):
         """
         return self.roots
 
+    def gene_tree(self):
+        """
+        Returns the gene tree, labelled with the raw I/P mapping values (i.e. without considering the locus
+        structure in the tree).
+        :return: ete2.Tree
+        """
+        if not self.G_labelled:
+            compute_mappings(self.G, self.S)
+        return self.G
+
     def show(self, layout=None, tree_style=None, palette=None):
         """
         Starts an interactive session to visualize the decomposition.
         :return: None
         """
         if not self.L:
-            self.locus_tree()
+            self.locus_tree()  # computes & stores the tree
+        raise NotImplemented
+
+    def render(self, fname, layout=None, tree_style=None, palette=None):
+        """
+        Renders the locus tree and writes the image to file.
+        :param fname: str
+            Output file path
+        :param layout:
+        :param tree_style:
+        :param palette:
+        :return: None
+        """
+        raise NotImplemented
 
     def write_forest(self, path=None):
         """
@@ -233,7 +258,7 @@ def assign_ranks(tree):
 
 def compute_mappings(G, S):
     """
-    Computes both I and P mappings using Pawel's algorithm. Modifies G and S in situ.
+    Computes both I and P mappings using Pawel's algorithm. Modifies G in situ.
     Leaf names in S are assumed to be unique.
     Leaf names in G are assumed to correspond to leaf names in S (no identifiers!)
     :param G: ete2.Tree
@@ -245,6 +270,8 @@ def compute_mappings(G, S):
     except AttributeError:
         print("Species tree not initialized; Assign ranks before computing mappings.")
         raise
+    else:
+        S = S.copy()
 
     # I mapping
     for g in G.traverse(strategy="postorder"):
@@ -269,7 +296,7 @@ def compute_mappings(G, S):
         for g in G:
             if g.smap.rank == i:
                 if g.smap.lastvisited is not None:
-                    p = G.get_common_ancestor(g, g.smap.lastvisited)
+                    p = g.get_common_ancestor(g.smap.lastvisited)
                     if p.P is None:
                         p.P = i
                 g.smap.lastvisited = g
@@ -360,9 +387,9 @@ def cut_tree(g, S):
     hgtc2 = dplc[1].children
     lc1 = len(hgtc1)
     lc2 = len(hgtc2)  # number of hgt-like candidates
-    lg = len(g)
     embeddable = [True, True] + [False]*(lc1 + lc2)  # g's children always satisfy embeddability condition
-    loss_cost = [len(dplc[0].M) - len(dplc[0]) + len(dplc[1].M) - len(dplc[1])]*2 + [0]*(lc1 + lc2)
+    loss_cost = [len(dplc[0].M) + len(dplc[1].M)]*2 + [0]*(lc1 + lc2)
+    new_tree_size = [len(dplc[0]), len(dplc[1])] + [0]*(lc1 + lc2)
 
     # checking embeddability and loss cost
     leafset2 = set(dplc[1])
@@ -372,7 +399,8 @@ def cut_tree(g, S):
         newM = S.get_common_ancestor(dplc[1].M, hgtc1[1-i].M)  # updated M mapping after removal of hgtc1[i]
         newI = newM.rank
         embeddable[2+i] = check_division(leafset1, leafset2, newI)
-        loss_cost[2+i] = len(hgtc1[i].M) + len(newM) - lg
+        loss_cost[2+i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
+        new_tree_size[2+i] = len(hgtc1[i])
 
     leafset2 = set(dplc[0])
     for i in range(lc2):
@@ -380,15 +408,17 @@ def cut_tree(g, S):
         newM = S.get_common_ancestor(dplc[0].M, hgtc2[1-i].M)
         newI = newM.rank
         embeddable[2 + lc1 + i] = check_division(leafset1, leafset2, newI)
-        loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM) - lg
+        loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM)
+        new_tree_size[2 + lc1 + i] = len(hgtc2[i])
 
-    # non-embeddable decompositions may induce negative loss cost, i.e. when we'd try
-    # to make a hgt-like cut under a duplication node
-    assert all([loss_cost[l] >= 0 for l in range(2+lc1+lc2) if embeddable[l]]), "Negative loss cost! Investigate!"
+    min_cost = min(loss_cost)
+    good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2+lc1+lc2)]
 
     cut_id = 0
     for i in range(2 + lc1 + lc2):
-        if embeddable[i] and loss_cost[i] < loss_cost[cut_id]:
+        if good_cut[i] and new_tree_size[i] < new_tree_size[cut_id]:
+            # We cut out the smallest tree.
+            # It makes the forest slightly higher but lowers the number of non-admissible events.
             cut_id = i
 
     if cut_id < 2:
@@ -456,6 +486,7 @@ def decompose(gene_tree, species_tree):
 
 
 if __name__=="__main__":
+    from time import time
     S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
     G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
     #S = ete2.Tree('(a, b);')
@@ -471,7 +502,21 @@ if __name__=="__main__":
     #print S
     #print G
 
+    #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/species_tree.labelled.tree', format=8)
+    #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/gene_tree6.labelled.tree', format=9)
 
+    #G = G.get_common_ancestor(G&"S323_1", G&"S313_1")
+    #S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
+
+    s = time()
     D = decompose(G, S)
+    e = time()
+    print "Decomposed in %.02f seconds" % (e - s)
+    s = time()
     F = D.forest()
+    e = time()
+    print "Forest obtained in %.02f seconds" % (e - s)
+    s = time()
     L = D.locus_tree()
+    e = time()
+    print "Locus tree obtained in %.02f seconds" % (e - s)
