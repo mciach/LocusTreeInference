@@ -8,18 +8,43 @@ class Decomposition(object):
         A locus decomposition of a gene tree with respect to a given species tree.
         :param gene_tree: ete2.Tree
         :param species_tree: ete2.Tree
+            A ranked species tree. Each node nees to have a 'rank' attribute.
+            If the supplied species tree is not ranked, it is possible to assign artificial
+            ranks after initializing the object by running
+            the method assign_topological_ranks() from this class.
+            The ranks need to be assigned prior to most operations on the decomposition.
         :param roots: list
             A list of identifiers (in post-order numbering) of the roots of trees from the decomposition forest.
         """
         self.G = gene_tree
         for i, g in enumerate(self.G.traverse(strategy="postorder")):
             g.nid = i
-        self.G_labelled = False # whether G has been labelled with raw I/P mappings
+        self.G_labelled = False  # whether G has been labelled with raw I/P mappings
         self.S = species_tree
         self.roots = sorted(roots)
         self.F = []  # forest
         self.L = None  # locus tree
+        self.colorized = False # whether the locus tree has been colorized for rendering
+        self._map_gene_to_species()
         # self._assign_locus_ids()
+
+    def assign_topological_ranks(self):
+        """
+        Assign ranks to the nodes of the species tree.
+        A topological rank is equal to the depth of the node.
+        :return: None
+        """
+        for n in self.S.traverse(strategy="postorder"):
+            if n.is_leaf():
+                n.rank = 0
+            else:
+                n.rank = max(c.rank for c in n.children) + 1
+
+    def _map_gene_to_species(self):
+        for l in self.G:
+            l.species = self.S.get_leaves_by_name(l.name.split('_')[0])
+            assert len(l.species) == 1; "Species names are not unique!"
+            l.species = l.species[0]
 
     def _assign_locus_ids(self):
         """
@@ -39,23 +64,6 @@ class Decomposition(object):
                 if n.source:
                     loci_to_process.append(n)
             locus += 1
-
-    def _get_node_types(self):
-        """
-        Classifies nodes of the locus tree (self.L) as either root, internal, or outside nodes.
-        :return: dict
-            A dictionary mapping gene tree's nodes' postorder IDs to their types.
-        """
-        nodetype = dict((g.nid, "internal") for g in self.L.traverse())
-        for r in self.roots:
-            nodetype[r] = "root"
-        for g in self.L.traverse(strategy="postorder"):
-            if nodetype[g.nid] == "root" and not g.is_root():
-                nodetype[g.up.nid] = "outside"  # junction nodes
-        for g in self.L.traverse(strategy="postorder"):
-            if not g.is_leaf() and all(nodetype[c.nid] == "outside" for c in g.children):
-                nodetype[g.nid] = "outside"  # nodes above junction nodes
-        return nodetype
 
     def _compute_adjusted_mappings(self):
         """
@@ -91,8 +99,8 @@ class Decomposition(object):
                 pureM[g] = g_species
                 combinedM[g] = g_species
                 smap[g] = g_species
-                g.I = 1
-                g.P = 1
+                g.I = 0
+                g.P = 0
             else:
                 g.P = None  # init
                 # computing pureM
@@ -123,34 +131,40 @@ class Decomposition(object):
             s.lastvisited = None
 
         leaves = [l for l in L]
-        for i in range(1, d + 1):
+        for i in range(0, d+1):
             for lid, l1 in enumerate(leaves):
                 if smap[l1].rank == i:
                     for l2 in leaves[(lid+1):]:
                         if smap[l2] == smap[l1]:
                             p = l1.get_common_ancestor(l2)
                             locus_set = [p.locus_id] + [c.locus_id for c in p.children]
-                            if p.P is None and  {l1.locus_id, l2.locus_id}.issubset(locus_set):
+                            if p.P is None and {l1.locus_id, l2.locus_id}.issubset(locus_set):
                                 p.P = i
                     smap[l1] = smap[l1].up
 
-    def _label_source_nodes(self):
+    def _lift_roots(self):
         """
         Labels the source nodes, i.e. the ends of cut edges, by adding a boolean 'source' attribute
-        to each node.
+        to each node of the locus tree.
         :return:
         """
-        nodetypes = self._get_node_types()
         L = self.L
+        # primary assignment
         for g in L.traverse():
-            g.source = False
-        L.source = True
+            g.source = True if g.nid in self.roots else False
+        # traversing upwards
         for i, g in enumerate(L.traverse(strategy="postorder")):
-            if nodetypes[i] == "outside":
-                if nodetypes[g.children[1].nid] == "root":
-                    g.children[1].source = True
-                else:
-                    g.children[0].source = True
+            if g.is_root():
+                continue
+            elif g.source:
+                s = g.get_sisters()[0]
+                if s.source:
+                    g.up.source = True
+                    if len(g) > len(s):
+                        g.source = False
+                    else:
+                        s.source = False
+        assert L.source == True, "Root is not a source node. Pls report this"
 
     def locus_tree(self):
         """
@@ -179,25 +193,15 @@ class Decomposition(object):
         if self.F:
             return self.F
         else:
-            # G = self.G.copy()
-            # for r in self.roots:
-            #     self.F.append(G.search_nodes(nid=r)[0].detach())
-            #     while len(G.children) == 1:  # moving down the root
-            #         G = G.children[0]
-            #     G.prune(G)
-            # return self.F
             G = self.G.copy()
-            self.F = [g.detach() for g in G.traverse() if g.nid in self.roots]
-            self.F = [f.children[0] if len(f.children) == 1 else f for f in self.F]  # removing upper single nodes
-            map(lambda x: x.prune(x), self.F)  # removing internal single nodes
+            for r in self.roots:
+                if r == 223:
+                    pass
+                self.F.append(G.search_nodes(nid=r)[0].detach())
+                while len(G.children) == 1:  # pushing down the root
+                    G = G.children[0]
+                G.prune(G)
             return self.F
-
-    def roots(self):
-        """
-        Returns the list of subtree root IDs in postorder numbering.
-        :return:
-        """
-        return self.roots
 
     def gene_tree(self):
         """
@@ -209,14 +213,71 @@ class Decomposition(object):
             compute_mappings(self.G, self.S)
         return self.G
 
-    def show(self, layout=None, tree_style=None, palette=None):
+    def _colorize(self, palette):
+        """
+        Assigns faces and colours to the locus trees for pretty rendering.
+        :param palette: list
+            List of strings representing colours in hexadecimal format.
+        :return:
+        """
+        from ete2 import NodeStyle, faces
+        if not self.L:
+            self.locus_tree()  # computes & stores the tree
+        ncol = len(palette)
+        iFace = faces.AttrFace("I", fsize=8, text_suffix='/')
+        pFace = faces.AttrFace("P", fsize=8)
+        # idFace = faces.AttrFace("id", fsize=8)
+        # suppFace = faces.AttrFace("support", text_suffix=" ", formatter="%.2f", fsize=8)
+        coloured = dict((i, False) for i, g in enumerate(self.L.traverse(strategy="postorder")))
+        current_colour = -1
+        for g in self.L.traverse(strategy="postorder"):
+            if not g.is_leaf():
+                # g.add_face(suppFace, position="branch-bottom", column=-2)
+                g.add_face(iFace, position="branch-top", column=-1)
+                g.add_face(pFace, position="branch-top", column=0)
+            if g.source:
+                current_colour += 1
+                current_colour %= ncol
+                style = NodeStyle()
+                style['vt_line_color'] = palette[current_colour]
+                style['hz_line_color'] = palette[current_colour]
+                style['size'] = 0
+                style['fgcolor'] = '#000000'
+                style["vt_line_width"] = 2
+                style["hz_line_width"] = 2
+                for gg in g.traverse():
+                    if not coloured[gg.nid]:
+                        gg.set_style(style)
+                        coloured[gg.nid] = True
+
+    def show(self, tree_style=None, palette=None):
         """
         Starts an interactive session to visualize the decomposition.
         :return: None
         """
-        if not self.L:
-            self.locus_tree()  # computes & stores the tree
-        raise NotImplemented
+        if not palette:
+            palette = ['#1F77B4', '#AEC7E8', '#FF7F0E',
+                       '#FFBB78', '#2CA02C', '#98DF8A',
+                       '#D62728', '#FF9896', '#9467BD',
+                       '#C5B0D5', '#8C564B', '#C49C94',
+                       '#E377C2', '#F7B6D2', '#7F7F7F',
+                       '#C7C7C7', '#BCBD22', '#DBDB8D',
+                       '#17BECF', '#9EDAE5']
+        if not self.colorized:
+            self._colorize(palette)
+            self.colorized = True
+        if not tree_style:
+            from ete2 import TreeStyle
+            tree_style = TreeStyle()
+            # tstyle.show_leaf_name = False
+            tree_style.scale = 28
+            tree_style.branch_vertical_margin = 6
+            tree_style.show_branch_length = False
+
+            # tstyle.show_branch_support = True
+            tree_style.show_scale = False
+        self.L.convert_to_ultrametric()
+        self.L.show(tree_style=tree_style)
 
     def render(self, fname, layout=None, tree_style=None, palette=None):
         """
@@ -228,7 +289,29 @@ class Decomposition(object):
         :param palette:
         :return: None
         """
-        raise NotImplemented
+        if not palette:
+            palette = ['#1F77B4', '#AEC7E8', '#FF7F0E',
+                       '#FFBB78', '#2CA02C', '#98DF8A',
+                       '#D62728', '#FF9896', '#9467BD',
+                       '#C5B0D5', '#8C564B', '#C49C94',
+                       '#E377C2', '#F7B6D2', '#7F7F7F',
+                       '#C7C7C7', '#BCBD22', '#DBDB8D',
+                       '#17BECF', '#9EDAE5']
+        if not self.colorized:
+            self._colorize(palette)
+            self.colorized = True
+        if not tree_style:
+            from ete2 import TreeStyle
+            tree_style = TreeStyle()  # imported during colorizing tree
+            # tstyle.show_leaf_name = False
+            tree_style.scale = 28
+            tree_style.branch_vertical_margin = 6
+            tree_style.show_branch_length = False
+
+            # tstyle.show_branch_support = True
+            tree_style.show_scale = False
+        self.L.convert_to_ultrametric()
+        self.L.render(file_name=fname, tree_style=tree_style)
 
     def write_forest(self, path=None):
         """
@@ -251,7 +334,7 @@ def assign_ranks(tree):
     T = tree
     for n in T.traverse(strategy="postorder"):
         if n.is_leaf():
-            n.rank = 1
+            n.rank = 0
         else:
             n.rank = max(c.rank for c in n.children) + 1
 
@@ -279,11 +362,11 @@ def compute_mappings(G, S):
             g_species = g.name
             g_species = S.get_leaves_by_name(name=g_species)[0]
             g.M = g_species
-            g.I = 1
-            g.P = 1
+            g.I = 0
+            g.P = 0
             g.smap = g_species
         else:
-            g_species = S.get_common_ancestor(g.children[0].M, g.children[1].M)
+            g_species = g.children[0].M.get_common_ancestor(g.children[1].M)
             g.M = g_species
             g.I = g_species.rank
             g.P = None
@@ -292,7 +375,7 @@ def compute_mappings(G, S):
     for s in S.traverse():
         s.lastvisited = None
 
-    for i in range(1, d+1):
+    for i in range(0, d+1):
         for g in G:
             if g.smap.rank == i:
                 if g.smap.lastvisited is not None:
@@ -341,7 +424,7 @@ def minimal_nodes(G):
             continue
         minimal_under[g] = any(is_minimal[c] or minimal_under[c] for c in g.children)
         if not minimal_under[g]:
-            if g.I == 1 or g.I > g.P:
+            if g.I == 0 or g.I > g.P:
                 is_minimal[g] = True
     return [g for g in is_minimal if is_minimal[g]]
 
@@ -364,20 +447,20 @@ def cut_tree(g, S):
         Checks if rank r divides evolutionary lineages of two leaf sets
         (i.e. if their lineages have disjoint taxa in rank r-1).
         :param r: int
-            The rank, an integer from 1 to height of S.
+            The rank, an integer from 0 to height of S.
         :param leafset: set
             A set of leaf nodes (ete3.Tree objects).
         :return: bool
         """
-        if r == 1:
-            # This would mean that we check an internal node with I == 1,
+        if r == 0:
+            # This would mean that we check an internal node with I == 0 after pruning,
             # so there is no embeddability.
             return False
-        ancset1 = set([l.M.lineage[r-2] for l in leafset1])
-        ancset2 = set([l.M.lineage[r-2] for l in leafset2])
+        ancset1 = set([l.M.lineage[r-1] for l in leafset1])
+        ancset2 = set([l.M.lineage[r-1] for l in leafset2])
         return ancset1.isdisjoint(ancset2)
 
-    if g.I == g.P and g.I > 1:
+    if g.I == g.P and g.I > 0:
         raise ValueError("The node is embeddable - nothing to cut!")
     elif g.is_leaf():
         raise ValueError("The node is a leaf - nothing to cut!")
@@ -396,7 +479,7 @@ def cut_tree(g, S):
     for i in range(lc1):
         # if hgtc1 not empty, then it has two elements; 1-i is the other one
         leafset1 = set(hgtc1[1-i])
-        newM = S.get_common_ancestor(dplc[1].M, hgtc1[1-i].M)  # updated M mapping after removal of hgtc1[i]
+        newM = dplc[1].M.get_common_ancestor(hgtc1[1-i].M)  # updated M mapping after removal of hgtc1[i]
         newI = newM.rank
         embeddable[2+i] = check_division(leafset1, leafset2, newI)
         loss_cost[2+i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
@@ -405,21 +488,19 @@ def cut_tree(g, S):
     leafset2 = set(dplc[0])
     for i in range(lc2):
         leafset1 = set(hgtc2[1-i])
-        newM = S.get_common_ancestor(dplc[0].M, hgtc2[1-i].M)
+        newM = dplc[0].M.get_common_ancestor(hgtc2[1-i].M)
         newI = newM.rank
         embeddable[2 + lc1 + i] = check_division(leafset1, leafset2, newI)
         loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM)
         new_tree_size[2 + lc1 + i] = len(hgtc2[i])
 
-    min_cost = min(loss_cost)
+    # not very efficient, but oh well
+    min_cost = min([loss_cost[i] for i in range(2+lc1+lc2) if embeddable[i]])
+    # embeddable & min cost:
     good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2+lc1+lc2)]
-
-    cut_id = 0
-    for i in range(2 + lc1 + lc2):
-        if good_cut[i] and new_tree_size[i] < new_tree_size[cut_id]:
-            # We cut out the smallest tree.
-            # It makes the forest slightly higher but lowers the number of non-admissible events.
-            cut_id = i
+    target_size = min([new_tree_size[i] for i in range(2+lc1+lc2) if good_cut[i]])
+    # embeddable, min cost & min tree:
+    cut_id = [i for i in range(2+lc1+lc2) if good_cut[i] and new_tree_size[i] == target_size][0]
 
     if cut_id < 2:
         newroot = dplc[cut_id]
@@ -463,36 +544,40 @@ def decompose(gene_tree, species_tree):
             raise ValueError("The gene %s does not correspond to any species!" % g.name)
 
     for i, g in enumerate(G.traverse(strategy="postorder")):
-        g.id = i
+        g.nid = i
 
     # initialize data
     assign_ranks(S)
     assign_lineages(S)
 
     # decompose
-    improper = [G]  # list of minimal "improper" nodes
+    improper = [G]  # list of minimal non-embeddable nodes
     roots = []  # decomposition forest
     while improper:
         compute_mappings(G, S)
         improper = minimal_nodes(G)
-        subtrees = [cut_tree(g, S).detach() for g in improper]
-        roots += [s.id for s in subtrees]
+        subtrees = [cut_tree(g, S) for g in improper]
+        roots += [s.nid for s in subtrees]
+        map(lambda x: x.detach(), subtrees)
+        # Pruning G. This is time costly, and ideally should be get rid of,
+        # but is required in the current implementation.
         while len(G.children) == 1:
             G = G.children[0]  # moving down the root, because pruning preserves it
-        G.prune(G)  # removing nodes with single children; whether the node or it's child is removed doesn't matter
-                    # because their parents are not improper anymore
-    roots.append(G.id)
-    return Decomposition(gene_tree.copy(), S, roots)
+        G.prune(G)  # removing nodes with single children
+    roots.append(G.nid)
+    return Decomposition(gene_tree, S, roots)
 
 
 if __name__=="__main__":
     from time import time
-    S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
-    G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
+    #S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
+    #G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
     #S = ete2.Tree('(a, b);')
     #G = ete2.Tree('((a, b), (a, b));')
     #S = ete2.Tree('(((a, b), (c, d)), d);')
     #G = ete2.Tree('((((a, b), (c, d)), (a, b)), d);')
+    #S = ete2.Tree("(a, b);")
+    #G = ete2.Tree("(((a, a), (a, a)), (b, b));")
     #S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
     #G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
     #G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/gene_tree8.simdec.tree', format=9)
@@ -505,8 +590,15 @@ if __name__=="__main__":
     #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/species_tree.labelled.tree', format=8)
     #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/gene_tree6.labelled.tree', format=9)
 
-    #G = G.get_common_ancestor(G&"S323_1", G&"S313_1")
+    #G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
     #S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
+
+    G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
+    S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
+    roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
+
+    TD = Decomposition(G, S, roots)
+    TD.forest()
 
     s = time()
     D = decompose(G, S)
@@ -520,3 +612,22 @@ if __name__=="__main__":
     L = D.locus_tree()
     e = time()
     print "Locus tree obtained in %.02f seconds" % (e - s)
+
+    print L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P'])
+
+
+
+    # for i in range(1000):
+    #     print i
+    #     G = ete2.Tree()
+    #     G.populate(100, names_library=[s.name for s in S], reuse_names=True)
+    #     D = decompose(G, S)
+    #     F = D.forest()
+    #     L = D.locus_tree()
+    #     lnms = [set([l.name for l in L.search_nodes(locus_id=i) if l.is_leaf()]) for i in set(l.locus_id for l in L)]
+    #     fnms = [set([l.name for l in f]) for f in F]
+    #
+    #     assert all([l in fnms for l in lnms])
+    #     assert all([l in lnms for l in fnms])
+
+
