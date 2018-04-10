@@ -18,11 +18,11 @@ class Decomposition(object):
         """
         self.G = gene_tree
         for i, g in enumerate(self.G.traverse(strategy="postorder")):
-            g.nid = i
+            g.nid = i  # used to identify e.g. forest roots
         self.G_labelled = False  # whether G has been labelled with raw I/P mappings
         self.S = species_tree
         self.roots = sorted(roots)
-        self.F = []  # forest
+        self.F = []  # forest; self.F[i] corresponds to self.roots[i]
         self.L = None  # locus tree
         self.colorized = False # whether the locus tree has been colorized for rendering
         self._map_gene_to_species()
@@ -146,25 +146,87 @@ class Decomposition(object):
         """
         Labels the source nodes, i.e. the ends of cut edges, by adding a boolean 'source' attribute
         to each node of the locus tree.
+        Maximizes the number of junction nodes with adjusted P mapping value = 0.
         :return:
         """
+        def _score(nid1, nid2):
+            """
+            Score a path joining two roots from the forest.
+            The roots are identified by their postorder IDs: nid1, nid2.
+            :return: float
+            """
+            return 1 if {nid1, nid2} in pairs else 0
+
         L = self.L
-        # primary assignment
-        for g in L.traverse():
-            g.source = True if g.nid in self.roots else False
-        # traversing upwards
-        for i, g in enumerate(L.traverse(strategy="postorder")):
-            if g.is_root():
+        G = self.G
+        S = self.S
+        # identifying forests sharing a species
+        forest = self.forest()
+        labels = [{l.species for l in f} for f in forest]
+        pairs = [{forest[i].nid, forest[j].nid} for i in range(len(forest))
+                 for j in range(i+1, len(forest)) if not labels[i].isdisjoint(labels[j])]
+
+        # computing partial costs
+        for g in G.traverse():
+            if g.nid in self.roots:
+                g.inspect = True  # whether to compute cost for g
+                g.roots = [g.nid]  # postorder IDs of forest roots visible from g
+                g.pcosts = [0]  # partial costs
+            else:
+                g.roots = []
+                g.pcosts = []
+                g.inspect = False
+        for g in G.traverse(strategy="postorder"):
+            if g.is_leaf():
                 continue
-            elif g.source:
-                s = g.get_sisters()[0]
-                if s.source:
-                    g.up.source = True
-                    if len(g) > len(s):
-                        g.source = False
-                    else:
-                        s.source = False
-        assert L.source == True, "Root is not a source node. Pls report this"
+            c1, c2 = g.children
+            if c1.inspect and c2.inspect:
+                g.inspect = True
+                g.roots = c1.roots + c2.roots
+                for i1, r1 in enumerate(c1.roots):
+                    m = max(c2.pcosts[i2] + _score(r1, r2) for i2, r2 in enumerate(c2.roots))
+                    g.pcosts.append(c1.costs[i1] + m)
+                for i2, r2 in enumerate(c2.roots):
+                    m = max(c1.pcosts[i1] + _score(r1, r2) for i1, r1 in enumerate(c1.roots))
+                    g.pcosts.append(c2.costs[i2] + m)
+        # computing full costs & backtracking
+        for g in G.traverse():
+            g.source = False
+            g.root = -1  # index of a forest root joined with g by a path with no cuts
+            if g.inspect and (g.is_root() or not g.up.inspect):
+                # g is a root of a junction node cluster
+                g.source = True
+                c1, c2 = g.children
+                full_cost = -1
+                root1 = -1
+                root2 = -1
+                for i1, r1 in enumerate(c1.roots):
+                    for i2, r2 in enumerate(c2.roots):
+                        ncost = c1.pcosts[i1] + c2.pcosts[i2] + _score(r1, r2)
+                        if ncost > full_cost:
+                            full_cost = ncost
+                            root1 = r1
+                            root2 = r2
+                g.root = root1  # joining g with a root by a path
+                r1 = G.search_nodes(nid = root1)  # note that order of trees in forest corresponds to self.roots
+                r2 = G.search_nodes(nid = root2)
+                while r1 != g:
+                    s = r1.get_sisters()[0]
+                    s.source = True
+                    r1.root = root1
+                    r1 = r1.up
+                while r2 != g:
+                    s = r2.get_sisters()[0]
+                    s.source = True
+                    r2.root = root2
+                    r2 = r2.up
+                c1.source = False  # both children labelled as source, need to erase one labelling
+                for :
+                    # FINISH
+
+
+
+
 
     def locus_tree(self):
         """
@@ -195,8 +257,6 @@ class Decomposition(object):
         else:
             G = self.G.copy()
             for r in self.roots:
-                if r == 223:
-                    pass
                 self.F.append(G.search_nodes(nid=r)[0].detach())
                 while len(G.children) == 1:  # pushing down the root
                     G = G.children[0]
