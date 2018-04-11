@@ -24,7 +24,7 @@ class Decomposition(object):
         self.roots = sorted(roots)
         self.F = []  # forest; self.F[i] corresponds to self.roots[i]
         self.L = None  # locus tree
-        self.colorized = False # whether the locus tree has been colorized for rendering
+        self.colorized = False  # whether the locus tree has been colorized for rendering
         self._map_gene_to_species()
         # self._assign_locus_ids()
 
@@ -43,7 +43,8 @@ class Decomposition(object):
     def _map_gene_to_species(self):
         for l in self.G:
             l.species = self.S.get_leaves_by_name(l.name.split('_')[0])
-            assert len(l.species) == 1; "Species names are not unique!"
+            assert len(l.species) == 1;
+            "Species names are not unique!"
             l.species = l.species[0]
 
     def _assign_locus_ids(self):
@@ -131,10 +132,10 @@ class Decomposition(object):
             s.lastvisited = None
 
         leaves = [l for l in L]
-        for i in range(0, d+1):
+        for i in range(0, d + 1):
             for lid, l1 in enumerate(leaves):
                 if smap[l1].rank == i:
-                    for l2 in leaves[(lid+1):]:
+                    for l2 in leaves[(lid + 1):]:
                         if smap[l2] == smap[l1]:
                             p = l1.get_common_ancestor(l2)
                             locus_set = [p.locus_id] + [c.locus_id for c in p.children]
@@ -149,6 +150,7 @@ class Decomposition(object):
         Maximizes the number of junction nodes with adjusted P mapping value = 0.
         :return:
         """
+
         def _score(nid1, nid2):
             """
             Score a path joining two roots from the forest.
@@ -164,21 +166,24 @@ class Decomposition(object):
         forest = self.forest()
         labels = [{l.species for l in f} for f in forest]
         pairs = [{forest[i].nid, forest[j].nid} for i in range(len(forest))
-                 for j in range(i+1, len(forest)) if not labels[i].isdisjoint(labels[j])]
+                 for j in range(i + 1, len(forest)) if not labels[i].isdisjoint(labels[j])]
 
         # computing partial costs
         for g in L.traverse():
+            g.cluster_opts = 1  # nb of optimal solutions in cluster
             g.source = False
             if g.nid in self.roots:
                 g.inspect = True  # whether to compute cost for g
                 g.roots = [g.nid]  # postorder IDs of forest roots visible from g
                 g.pcosts = [0]  # partial costs
                 g.root = g.nid  # index of root joined with g by a path with no cuts
+                g.optimals = [1]  # number of optimal solutions
             else:
                 g.roots = []
                 g.pcosts = []
                 g.inspect = False
                 g.root = -1
+                g.optimals = []
         for g in L.traverse(strategy="postorder"):
             if g.is_leaf():
                 continue
@@ -189,9 +194,15 @@ class Decomposition(object):
                 for i1, r1 in enumerate(c1.roots):
                     m = max(c2.pcosts[i2] + _score(r1, r2) for i2, r2 in enumerate(c2.roots))
                     g.pcosts.append(c1.pcosts[i1] + m)
+                    g.optimals.append(c1.optimals[i1] * sum(c2.optimals[i2] for
+                                                            i2, r2 in enumerate(c2.roots) if
+                                                            c2.pcosts[i2] + _score(r1, r2) == m))
                 for i2, r2 in enumerate(c2.roots):
                     m = max(c1.pcosts[i1] + _score(r1, r2) for i1, r1 in enumerate(c1.roots))
                     g.pcosts.append(c2.pcosts[i2] + m)
+                    g.optimals.append(c2.optimals[i2] * sum(c1.optimals[i1] for
+                                                            i1, r1 in enumerate(c1.roots) if
+                                                            c1.pcosts[i1] + _score(r1, r2) == m))
         # computing full costs & backtracking
         for g in L.traverse():
             if g.inspect and (g.is_root() or not g.up.inspect):
@@ -199,6 +210,8 @@ class Decomposition(object):
                 g.source = True
                 if g.is_leaf():
                     continue
+                elif g.roots == [g.nid]:
+                    continue  # g is a root of a subtree
                 c1, c2 = g.children
                 full_cost = -1
                 root1 = -1
@@ -210,8 +223,12 @@ class Decomposition(object):
                             full_cost = ncost
                             root1 = r1
                             root2 = r2
-                r1 = L.search_nodes(nid = root1)[0]  # note that order of trees in forest corresponds to self.roots
-                r2 = L.search_nodes(nid = root2)[0]  # this is time consuming, probably should be implemented faster
+                g.cluster_opts = sum(c1.optimals[i1] * c2.optimals[i2] for
+                                     i1, r1 in enumerate(c1.roots) for i2, r2 in enumerate(c2.roots) if
+                                     c1.pcosts[i1] + c2.pcosts[i2] + _score(r1, r2) == full_cost)
+                g.cluster_opts *= 2  # to account for no constraint for the choice of cut below the root
+                r1 = L.search_nodes(nid=root1)[0]  # note that order of trees in forest corresponds to self.roots
+                r2 = L.search_nodes(nid=root2)[0]  # this is time consuming, probably should be implemented faster
                 assert r1.root == root1
                 assert r2.root == root2
                 while r1 != g:
@@ -225,7 +242,7 @@ class Decomposition(object):
                     r2.root = root2
                     r2 = r2.up
                 c1.source = False  # both children labelled as source, need to erase one labelling
-                g.root = root1  # joining g with a root by a path
+                g.root = root1  # joining g with a root by a path with no cuts
                 # traversing the junction cluster below g:
                 for v in g.traverse(strategy="preorder",
                                     is_leaf_fn=lambda x: x.nid == x.root):
@@ -239,15 +256,15 @@ class Decomposition(object):
                         if ncost > mcost:
                             mcost = ncost
                             croot = r
-                    r = L.search_nodes(nid = croot)[0]
+                    r = L.search_nodes(nid=croot)[0]
                     assert r.root == croot
                     c.root = croot
-                    while(r != c):
+                    while (r != c):
                         s = r.get_sisters()[0]
                         s.source = True
                         r.root = croot
                         r = r.up
-        print
+        self.number_of_optimal_solutions = reduce(lambda x, y: x*y, [g.cluster_opts for g in L.traverse()])
 
     def locus_tree(self):
         """
@@ -456,7 +473,7 @@ def compute_mappings(G, S):
     for s in S.traverse():
         s.lastvisited = None
 
-    for i in range(0, d+1):
+    for i in range(0, d + 1):
         for g in G:
             if g.smap.rank == i:
                 if g.smap.lastvisited is not None:
@@ -479,10 +496,10 @@ def assign_lineages(S):
     d = int(d) + 1
     for s in S:
         p = s
-        lineage = [S]*d
+        lineage = [S] * d
         while not p.is_root():
             pp = p.up
-            for i in range(p.rank-1, pp.rank-1):
+            for i in range(p.rank - 1, pp.rank - 1):
                 lineage[i] = p
             p = pp
         s.lineage = lineage
@@ -523,6 +540,7 @@ def cut_tree(g, S):
     :return: ete2.Tree
         The root of the new subtree (under the cut edge).
     """
+
     def check_division(leafset1, leafset2, r):
         """
         Checks if rank r divides evolutionary lineages of two leaf sets
@@ -537,8 +555,8 @@ def cut_tree(g, S):
             # This would mean that we check an internal node with I == 0 after pruning,
             # so there is no embeddability.
             return False
-        ancset1 = set([l.M.lineage[r-1] for l in leafset1])
-        ancset2 = set([l.M.lineage[r-1] for l in leafset2])
+        ancset1 = set([l.M.lineage[r - 1] for l in leafset1])
+        ancset2 = set([l.M.lineage[r - 1] for l in leafset2])
         return ancset1.isdisjoint(ancset2)
 
     if g.I == g.P and g.I > 0:
@@ -551,37 +569,37 @@ def cut_tree(g, S):
     hgtc2 = dplc[1].children
     lc1 = len(hgtc1)
     lc2 = len(hgtc2)  # number of hgt-like candidates
-    embeddable = [True, True] + [False]*(lc1 + lc2)  # g's children always satisfy embeddability condition
-    loss_cost = [len(dplc[0].M) + len(dplc[1].M)]*2 + [0]*(lc1 + lc2)
-    new_tree_size = [len(dplc[0]), len(dplc[1])] + [0]*(lc1 + lc2)
+    embeddable = [True, True] + [False] * (lc1 + lc2)  # g's children always satisfy embeddability condition
+    loss_cost = [len(dplc[0].M) + len(dplc[1].M)] * 2 + [0] * (lc1 + lc2)
+    new_tree_size = [len(dplc[0]), len(dplc[1])] + [0] * (lc1 + lc2)
 
     # checking embeddability and loss cost
     leafset2 = set(dplc[1])
     for i in range(lc1):
         # if hgtc1 not empty, then it has two elements; 1-i is the other one
-        leafset1 = set(hgtc1[1-i])
-        newM = dplc[1].M.get_common_ancestor(hgtc1[1-i].M)  # updated M mapping after removal of hgtc1[i]
+        leafset1 = set(hgtc1[1 - i])
+        newM = dplc[1].M.get_common_ancestor(hgtc1[1 - i].M)  # updated M mapping after removal of hgtc1[i]
         newI = newM.rank
-        embeddable[2+i] = check_division(leafset1, leafset2, newI)
-        loss_cost[2+i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
-        new_tree_size[2+i] = len(hgtc1[i])
+        embeddable[2 + i] = check_division(leafset1, leafset2, newI)
+        loss_cost[2 + i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
+        new_tree_size[2 + i] = len(hgtc1[i])
 
     leafset2 = set(dplc[0])
     for i in range(lc2):
-        leafset1 = set(hgtc2[1-i])
-        newM = dplc[0].M.get_common_ancestor(hgtc2[1-i].M)
+        leafset1 = set(hgtc2[1 - i])
+        newM = dplc[0].M.get_common_ancestor(hgtc2[1 - i].M)
         newI = newM.rank
         embeddable[2 + lc1 + i] = check_division(leafset1, leafset2, newI)
         loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM)
         new_tree_size[2 + lc1 + i] = len(hgtc2[i])
 
     # not very efficient, but oh well
-    min_cost = min([loss_cost[i] for i in range(2+lc1+lc2) if embeddable[i]])
+    min_cost = min([loss_cost[i] for i in range(2 + lc1 + lc2) if embeddable[i]])
     # embeddable & min cost:
-    good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2+lc1+lc2)]
-    target_size = min([new_tree_size[i] for i in range(2+lc1+lc2) if good_cut[i]])
+    good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2 + lc1 + lc2)]
+    target_size = min([new_tree_size[i] for i in range(2 + lc1 + lc2) if good_cut[i]])
     # embeddable, min cost & min tree:
-    cut_id = [i for i in range(2+lc1+lc2) if good_cut[i] and new_tree_size[i] == target_size][0]
+    cut_id = [i for i in range(2 + lc1 + lc2) if good_cut[i] and new_tree_size[i] == target_size][0]
 
     if cut_id < 2:
         newroot = dplc[cut_id]
@@ -649,36 +667,35 @@ def decompose(gene_tree, species_tree):
     return Decomposition(gene_tree, S, roots)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     from time import time
-    #S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
-    #G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
-    #S = ete2.Tree('(a, b);')
-    #G = ete2.Tree('((a, b), (a, b));')
-    #S = ete2.Tree('(((a, b), (c, d)), d);')
-    #G = ete2.Tree('((((a, b), (c, d)), (a, b)), d);')
-    #S = ete2.Tree("(a, b);")
-    #G = ete2.Tree("(((a, a), (a, a)), (b, b));")
-    #S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
-    #G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
-    #G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/gene_tree8.simdec.tree', format=9)
-    #S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/species_tree.labelled.tree', format=8)
+
+    # S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
+    # G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
+    # S = ete2.Tree('(a, b);')
+    # G = ete2.Tree('((a, b), (a, b));')
+    # S = ete2.Tree('(((a, b), (c, d)), d);')
+    # G = ete2.Tree('((((a, b), (c, d)), (a, b)), d);')
+    # S = ete2.Tree("(a, b);")
+    # G = ete2.Tree("(((a, a), (a, a)), (b, b));")
+    # S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
+    # G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
+    # G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/gene_tree8.simdec.tree', format=9)
+    # S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/species_tree.labelled.tree', format=8)
     # S = ete2.Tree('((v, s), (x, w));')
     # G = ete2.Tree('(((s, v), x), (w, w));')
-    #print S
-    #print G
+    # print S
+    # print G
 
-    #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/species_tree.labelled.tree', format=8)
-    #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/gene_tree6.labelled.tree', format=9)
+    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/species_tree.labelled.tree', format=8)
+    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/gene_tree6.labelled.tree', format=9)
 
-    #G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
-    #S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
+    # G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
+    # S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
 
-    #G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
-    #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
+    # G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
+    # S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     # roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
-
-
 
     G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
     S = ete2.Tree('(a, b, c, d, e, f);')
@@ -704,8 +721,6 @@ if __name__=="__main__":
 
     print L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P'])
 
-
-
     # for i in range(1000):
     #     print i
     #     G = ete2.Tree()
@@ -718,5 +733,3 @@ if __name__=="__main__":
     #
     #     assert all([l in fnms for l in lnms])
     #     assert all([l in lnms for l in fnms])
-
-
