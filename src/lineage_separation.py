@@ -168,14 +168,17 @@ class Decomposition(object):
 
         # computing partial costs
         for g in L.traverse():
+            g.source = False
             if g.nid in self.roots:
                 g.inspect = True  # whether to compute cost for g
                 g.roots = [g.nid]  # postorder IDs of forest roots visible from g
                 g.pcosts = [0]  # partial costs
+                g.root = g.nid  # index of root joined with g by a path with no cuts
             else:
                 g.roots = []
                 g.pcosts = []
                 g.inspect = False
+                g.root = -1
         for g in L.traverse(strategy="postorder"):
             if g.is_leaf():
                 continue
@@ -185,14 +188,12 @@ class Decomposition(object):
                 g.roots = c1.roots + c2.roots
                 for i1, r1 in enumerate(c1.roots):
                     m = max(c2.pcosts[i2] + _score(r1, r2) for i2, r2 in enumerate(c2.roots))
-                    g.pcosts.append(c1.costs[i1] + m)
+                    g.pcosts.append(c1.pcosts[i1] + m)
                 for i2, r2 in enumerate(c2.roots):
                     m = max(c1.pcosts[i1] + _score(r1, r2) for i1, r1 in enumerate(c1.roots))
-                    g.pcosts.append(c2.costs[i2] + m)
+                    g.pcosts.append(c2.pcosts[i2] + m)
         # computing full costs & backtracking
         for g in L.traverse():
-            g.source = False
-            g.root = -1  # index of a forest root joined with g by a path with no cuts
             if g.inspect and (g.is_root() or not g.up.inspect):
                 # g is a root of a junction node cluster
                 g.source = True
@@ -209,8 +210,10 @@ class Decomposition(object):
                             full_cost = ncost
                             root1 = r1
                             root2 = r2
-                r1 = L.search_nodes(nid = root1)  # note that order of trees in forest corresponds to self.roots
-                r2 = L.search_nodes(nid = root2)  # this is time consuming, probably should be implemented faster
+                r1 = L.search_nodes(nid = root1)[0]  # note that order of trees in forest corresponds to self.roots
+                r2 = L.search_nodes(nid = root2)[0]  # this is time consuming, probably should be implemented faster
+                assert r1.root == root1
+                assert r2.root == root2
                 while r1 != g:
                     s = r1.get_sisters()[0]
                     s.source = True
@@ -223,11 +226,12 @@ class Decomposition(object):
                     r2 = r2.up
                 c1.source = False  # both children labelled as source, need to erase one labelling
                 g.root = root1  # joining g with a root by a path
+                # traversing the junction cluster below g:
                 for v in g.traverse(strategy="preorder",
-                                    is_leaf_fn=lambda x: x.nid in x.roots):
-                    # traversing the junction cluster below g
+                                    is_leaf_fn=lambda x: x.nid == x.root):
+                    if v.nid == v.root: continue  # root of a forest tree
+                    assert not all(c.source for c in v.children), "Both children are source nodes!"
                     c = v.children[0] if v.children[0].source else v.children[1]
-                    assert c.source == False, "Both children are source nodes!"
                     mcost = -1
                     croot = -1
                     for i, r in enumerate(c.roots):
@@ -235,18 +239,15 @@ class Decomposition(object):
                         if ncost > mcost:
                             mcost = ncost
                             croot = r
-                    r = L.search_nodes(nid = croot)
+                    r = L.search_nodes(nid = croot)[0]
+                    assert r.root == croot
+                    c.root = croot
                     while(r != c):
                         s = r.get_sisters()[0]
                         s.source = True
                         r.root = croot
                         r = r.up
-
-
-
-
-
-
+        print
 
     def locus_tree(self):
         """
@@ -261,7 +262,7 @@ class Decomposition(object):
             return self.L
         else:
             self.L = self.G.copy()
-            self._label_source_nodes()
+            self._lift_roots()
             self._assign_locus_ids()
             self._compute_adjusted_mappings()
             return self.L
@@ -673,12 +674,20 @@ if __name__=="__main__":
     #G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
     #S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
 
-    G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
-    S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
-    roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
+    #G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
+    #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
+    # roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
+
+
+
+    G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    S = ete2.Tree('(a, b, c, d, e, f);')
+    roots = [0, 1, 5, 8, 13, 14]
 
     TD = Decomposition(G, S, roots)
+    TD.assign_topological_ranks()
     TD.forest()
+    TD.locus_tree()
 
     s = time()
     D = decompose(G, S)
