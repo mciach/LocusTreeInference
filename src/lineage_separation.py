@@ -175,7 +175,7 @@ class Decomposition(object):
             phi /= self.S.rank
             _, depth = node.get_farthest_leaf(topology_only=True)
             depth += 1
-            return (1 if {nid1, nid2} in pairs else 0, 1-phi, depth*(len(r1) + len(r2)))
+            return (1 if {nid1, nid2} in pairs else 0, 1-phi)
 
         def _psum(*tuples):
             return map(sum, zip(*tuples))
@@ -196,7 +196,7 @@ class Decomposition(object):
             if g.nid in self.roots:
                 g.inspect = True  # whether to compute cost for g
                 g.roots = [g.nid]  # postorder IDs of forest roots visible from g
-                g.pcosts = [(0., 0., 0.)]  # partial costs
+                g.pcosts = [(0., 0.)]  # partial costs
                 g.root = g.nid  # index of root joined with g by a path with no cuts
                 g.optimals = [1]  # number of optimal solutions
             else:
@@ -224,68 +224,61 @@ class Decomposition(object):
                     g.optimals.append(c2.optimals[i2] * sum(c1.optimals[i1] for
                                                             i1, r1 in enumerate(c1.roots) if
                                                             _psum(c1.pcosts[i1], _score(g, r2, r1)) == m))
-        self.optimal_cost = max(L.pcosts)
+        self.optimal_score = max(L.pcosts)
         # backtracking
-        for g in L.traverse():
+        for g in L.traverse(strategy="preorder"):
             if g.inspect and (g.is_root() or not g.up.inspect):
                 # g is a root of a junction node cluster
                 g.source = True
-                if g.is_leaf():
+                if g.is_leaf() and not g.roots == [g.nid]:
+                    raise ValueError("Leaf not a subtree root")
+                if g.nid in self.roots:
+                    # g is a root of a locus subtree
                     continue
-                elif g.roots == [g.nid]:
-                    continue  # g is a root of a subtree
+                else:
+                    c1, c2 = g.children
+                    full_cost = -1
+                    root1 = -1
+                    root2 = -1
+                    for i1, r1 in enumerate(c1.roots):
+                        for i2, r2 in enumerate(c2.roots):
+                            ncost = _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2))
+                            if ncost > full_cost:
+                                full_cost = ncost
+                                root1 = r1
+                                root2 = r2
+                    g.cluster_opts = sum(c1.optimals[i1] * c2.optimals[i2] for
+                                         i1, r1 in enumerate(c1.roots) for i2, r2 in enumerate(c2.roots) if
+                                         _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2)) == full_cost)
+                    c2.source = True  # arbitrary choice of source below a cluster root
+                    g.root = root1  # joining g with a root by a path with no cuts
+                    c1.root = root1
+                    c2.root = root2
+            elif g.inspect:
+                # "internal" node of a junction cluster
+                if g.is_leaf() and not g.roots == [g.nid]:
+                    raise ValueError("Leaf not a subtree root")
+                if g.nid in self.roots:
+                    continue
                 c1, c2 = g.children
-                full_cost = -1
-                root1 = -1
-                root2 = -1
-                for i1, r1 in enumerate(c1.roots):
-                    for i2, r2 in enumerate(c2.roots):
-                        ncost = _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2))
-                        if ncost > full_cost:
-                            full_cost = ncost
-                            root1 = r1
-                            root2 = r2
-                g.cluster_opts = sum(c1.optimals[i1] * c2.optimals[i2] for
-                                     i1, r1 in enumerate(c1.roots) for i2, r2 in enumerate(c2.roots) if
-                                     _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2)) == full_cost)
-                r1 = L.search_nodes(nid=root1)[0]  # note that order of trees in forest corresponds to self.roots
-                r2 = L.search_nodes(nid=root2)[0]  # this is time consuming, probably should be implemented faster
-                assert r1.root == root1
-                assert r2.root == root2
-                while r1 != g:
-                    s = r1.get_sisters()[0]
-                    s.source = True
-                    r1.root = root1
-                    r1 = r1.up
-                while r2 != g:
-                    s = r2.get_sisters()[0]
-                    s.source = True
-                    r2.root = root2
-                    r2 = r2.up
-                c1.source = False  # both children labelled as source, need to erase one labelling
-                g.root = root1  # joining g with a root by a path with no cuts
-                # traversing the junction cluster below g:
-                for v in g.iter_descendants(strategy="preorder",
-                                            is_leaf_fn=lambda x: x.nid == x.root):
-                    if v.nid == v.root: continue  # root of a forest tree
-                    assert not all(c.source for c in v.children), "Both children are source nodes!"
-                    c = v.children[0] if v.children[0].source else v.children[1]
-                    mcost = -1
-                    croot = -1
-                    for i, r in enumerate(c.roots):
-                        ncost = _psum(c.pcosts[i], _score(v, v.root, r))
-                        if ncost > mcost:
-                            mcost = ncost
-                            croot = r
-                    r = L.search_nodes(nid=croot)[0]
-                    assert r.root == croot
-                    c.root = croot
-                    while (r != c):
-                        s = r.get_sisters()[0]
-                        s.source = True
-                        r.root = croot
-                        r = r.up
-                    pass
+                if g.root in c1.roots:
+                    c2.source = True
+                    c1.root = g.root
+                    source_child = c2
+                elif g.root in c2.roots:
+                    c1.source = True
+                    c2.root = g.root
+                    source_child = c1
+                else:
+                    raise ValueError("Node joined to non-reachable subtree")
+                max_cost = -1
+                new_root = -1
+                for i, r in enumerate(source_child.roots):
+                    ncost = _psum(source_child.pcosts[i], _score(g, g.root, r))
+                    if ncost > max_cost:
+                        new_root = r
+                        max_cost = ncost
+                source_child.root = new_root
         self.number_of_optimal_solutions = reduce(lambda x, y: x*y, [g.cluster_opts for g in L.traverse()])
 
     def locus_tree(self):
@@ -719,14 +712,14 @@ if __name__ == "__main__":
     #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     #roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
 
-    #G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
-    #S = ete2.Tree('(a, b, c, d, e, f);')
-    #roots = [0, 1, 5, 8, 13, 14]
+    # G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    # S = ete2.Tree('(a, b, c, d, e, f);')
+    # roots = [0, 1, 5, 8, 13, 14]
 
-    #TD = Decomposition(G, S, roots)
-    #TD.assign_topological_ranks()
-    #TD.forest()
-    #TD.locus_tree()
+    # TD = Decomposition(G, S, roots)
+    # TD.assign_topological_ranks()
+    # TD.forest()
+    # TD.locus_tree()
 
     s = time()
     D = decompose(G, S)
