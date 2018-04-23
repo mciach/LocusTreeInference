@@ -224,8 +224,8 @@ class Decomposition(object):
                     g.optimals.append(c2.optimals[i2] * sum(c1.optimals[i1] for
                                                             i1, r1 in enumerate(c1.roots) if
                                                             _psum(c1.pcosts[i1], _score(g, r2, r1)) == m))
-        self.optimal_cost = max(g.pcosts)
-        # computing full costs & backtracking
+        self.optimal_cost = max(L.pcosts)
+        # backtracking
         for g in L.traverse():
             if g.inspect and (g.is_root() or not g.up.inspect):
                 # g is a root of a junction node cluster
