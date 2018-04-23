@@ -151,13 +151,34 @@ class Decomposition(object):
         :return:
         """
 
-        def _score(nid1, nid2):
+        # def _score(nid1, nid2):
+        #     """
+        #     Score a path joining two roots from the forest.
+        #     The roots are identified by their postorder IDs: nid1, nid2.
+        #     :return: float
+        #     """
+        #     return 1 if {nid1, nid2} in pairs else 0
+        def _score(node, nid1, nid2):
             """
             Score a path joining two roots from the forest.
             The roots are identified by their postorder IDs: nid1, nid2.
             :return: float
             """
-            return 1 if {nid1, nid2} in pairs else 0
+            r1 = L.search_nodes(nid = nid1)[0]
+            r2 = L.search_nodes(nid = nid2)[0]
+            sp1 = [l.species for l in r1]
+            sp2 = [l.species for l in r2]
+            I1 = sp1[0].get_common_ancestor(sp1).rank
+            I2 = sp2[0].get_common_ancestor(sp2).rank
+            I = sp1[0].get_common_ancestor(sp1+sp2).rank
+            phi = I - (I1 + I2)/2.
+            phi /= self.S.rank
+            _, depth = node.get_farthest_leaf(topology_only=True)
+            depth += 1
+            return (1 if {nid1, nid2} in pairs else 0, 1-phi, depth*(len(r1) + len(r2)))
+
+        def _psum(*tuples):
+            return map(sum, zip(*tuples))
 
         L = self.L
         if not L:
@@ -175,7 +196,7 @@ class Decomposition(object):
             if g.nid in self.roots:
                 g.inspect = True  # whether to compute cost for g
                 g.roots = [g.nid]  # postorder IDs of forest roots visible from g
-                g.pcosts = [0]  # partial costs
+                g.pcosts = [(0., 0., 0.)]  # partial costs
                 g.root = g.nid  # index of root joined with g by a path with no cuts
                 g.optimals = [1]  # number of optimal solutions
             else:
@@ -192,17 +213,18 @@ class Decomposition(object):
                 g.inspect = True
                 g.roots = c1.roots + c2.roots
                 for i1, r1 in enumerate(c1.roots):
-                    m = max(c2.pcosts[i2] + _score(r1, r2) for i2, r2 in enumerate(c2.roots))
-                    g.pcosts.append(c1.pcosts[i1] + m)
+                    m = max(_psum(c2.pcosts[i2],  _score(g, r1, r2)) for i2, r2 in enumerate(c2.roots))
+                    g.pcosts.append(_psum(c1.pcosts[i1], m))
                     g.optimals.append(c1.optimals[i1] * sum(c2.optimals[i2] for
                                                             i2, r2 in enumerate(c2.roots) if
-                                                            c2.pcosts[i2] + _score(r1, r2) == m))
+                                                            _psum(c2.pcosts[i2], _score(g, r1, r2)) == m))
                 for i2, r2 in enumerate(c2.roots):
-                    m = max(c1.pcosts[i1] + _score(r1, r2) for i1, r1 in enumerate(c1.roots))
-                    g.pcosts.append(c2.pcosts[i2] + m)
+                    m = max(_psum(c1.pcosts[i1], _score(g, r2, r1)) for i1, r1 in enumerate(c1.roots))
+                    g.pcosts.append(_psum(c2.pcosts[i2], m))
                     g.optimals.append(c2.optimals[i2] * sum(c1.optimals[i1] for
                                                             i1, r1 in enumerate(c1.roots) if
-                                                            c1.pcosts[i1] + _score(r1, r2) == m))
+                                                            _psum(c1.pcosts[i1], _score(g, r2, r1)) == m))
+        self.optimal_cost = max(g.pcosts)
         # computing full costs & backtracking
         for g in L.traverse():
             if g.inspect and (g.is_root() or not g.up.inspect):
@@ -218,15 +240,14 @@ class Decomposition(object):
                 root2 = -1
                 for i1, r1 in enumerate(c1.roots):
                     for i2, r2 in enumerate(c2.roots):
-                        ncost = c1.pcosts[i1] + c2.pcosts[i2] + _score(r1, r2)
+                        ncost = _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2))
                         if ncost > full_cost:
                             full_cost = ncost
                             root1 = r1
                             root2 = r2
                 g.cluster_opts = sum(c1.optimals[i1] * c2.optimals[i2] for
                                      i1, r1 in enumerate(c1.roots) for i2, r2 in enumerate(c2.roots) if
-                                     c1.pcosts[i1] + c2.pcosts[i2] + _score(r1, r2) == full_cost)
-                g.cluster_opts *= 2  # to account for no constraint for the choice of cut below the root
+                                     _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2)) == full_cost)
                 r1 = L.search_nodes(nid=root1)[0]  # note that order of trees in forest corresponds to self.roots
                 r2 = L.search_nodes(nid=root2)[0]  # this is time consuming, probably should be implemented faster
                 assert r1.root == root1
@@ -244,15 +265,15 @@ class Decomposition(object):
                 c1.source = False  # both children labelled as source, need to erase one labelling
                 g.root = root1  # joining g with a root by a path with no cuts
                 # traversing the junction cluster below g:
-                for v in g.traverse(strategy="preorder",
-                                    is_leaf_fn=lambda x: x.nid == x.root):
+                for v in g.iter_descendants(strategy="preorder",
+                                            is_leaf_fn=lambda x: x.nid == x.root):
                     if v.nid == v.root: continue  # root of a forest tree
                     assert not all(c.source for c in v.children), "Both children are source nodes!"
                     c = v.children[0] if v.children[0].source else v.children[1]
                     mcost = -1
                     croot = -1
                     for i, r in enumerate(c.roots):
-                        ncost = c.pcosts[i] + _score(v.root, r)
+                        ncost = _psum(c.pcosts[i], _score(v, v.root, r))
                         if ncost > mcost:
                             mcost = ncost
                             croot = r
@@ -264,6 +285,7 @@ class Decomposition(object):
                         s.source = True
                         r.root = croot
                         r = r.up
+                    pass
         self.number_of_optimal_solutions = reduce(lambda x, y: x*y, [g.cluster_opts for g in L.traverse()])
 
     def locus_tree(self):
@@ -678,33 +700,33 @@ if __name__ == "__main__":
     # G = ete2.Tree('((((a, b), (c, d)), (a, b)), d);')
     # S = ete2.Tree("(a, b);")
     # G = ete2.Tree("(((a, a), (a, a)), (b, b));")
-    # S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
-    # G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
-    # G = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/gene_tree8.simdec.tree', format=9)
-    # S = ete2.Tree('/home/ciach/Projects/Tree_node_classification/ScoringSystem/BothEvents/Loss09/S07/species_tree.labelled.tree', format=8)
+    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
+    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
+    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss01/S01/gene_tree2.simdec.tree', format=9)
+    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss01/S01/species_tree.labelled.tree', format=8)
     # S = ete2.Tree('((v, s), (x, w));')
     # G = ete2.Tree('(((s, v), x), (w, w));')
     # print S
     # print G
 
-    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/species_tree.labelled.tree', format=8)
-    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/Simulations/DTL_stochastic/S04/gene_tree6.labelled.tree', format=9)
+    G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss04/S08/gene_tree0.labelled.tree', format=9)
+    S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss04/S08/species_tree.labelled.tree', format=8)
 
     # G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
     # S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
 
-    # G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
-    # S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
-    # roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
+    #G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
+    #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
+    #roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
 
-    G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
-    S = ete2.Tree('(a, b, c, d, e, f);')
-    roots = [0, 1, 5, 8, 13, 14]
+    #G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    #S = ete2.Tree('(a, b, c, d, e, f);')
+    #roots = [0, 1, 5, 8, 13, 14]
 
-    TD = Decomposition(G, S, roots)
-    TD.assign_topological_ranks()
-    TD.forest()
-    TD.locus_tree()
+    #TD = Decomposition(G, S, roots)
+    #TD.assign_topological_ranks()
+    #TD.forest()
+    #TD.locus_tree()
 
     s = time()
     D = decompose(G, S)
@@ -720,6 +742,7 @@ if __name__ == "__main__":
     print "Locus tree obtained in %.02f seconds" % (e - s)
 
     print L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P'])
+    clstrs = [g for g in L.traverse() if g.inspect and (g.is_root() or not g.up.inspect)]
 
     # for i in range(1000):
     #     print i
