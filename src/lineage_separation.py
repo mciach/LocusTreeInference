@@ -173,12 +173,12 @@ class Decomposition(object):
             I = sp1[0].get_common_ancestor(sp1+sp2).rank
             phi = I - (I1 + I2)/2.
             phi /= self.S.rank
-            _, depth = node.get_farthest_leaf(topology_only=True)
-            depth += 1
+            # _, depth = node.get_farthest_leaf(topology_only=True)
+            # depth += 1
             return (1 if {nid1, nid2} in pairs else 0, 1-phi)
 
         def _psum(*tuples):
-            return map(sum, zip(*tuples))
+            return tuple(map(sum, zip(*tuples)))
 
         L = self.L
         if not L:
@@ -224,7 +224,7 @@ class Decomposition(object):
                     g.optimals.append(c2.optimals[i2] * sum(c1.optimals[i1] for
                                                             i1, r1 in enumerate(c1.roots) if
                                                             _psum(c1.pcosts[i1], _score(g, r2, r1)) == m))
-        self.optimal_score = max(L.pcosts)
+        self.optimal_score = (0, 0)
         # backtracking
         for g in L.traverse(strategy="preorder"):
             if g.inspect and (g.is_root() or not g.up.inspect):
@@ -237,7 +237,7 @@ class Decomposition(object):
                     continue
                 else:
                     c1, c2 = g.children
-                    full_cost = -1
+                    full_cost = (-1, -1)
                     root1 = -1
                     root2 = -1
                     for i1, r1 in enumerate(c1.roots):
@@ -247,6 +247,8 @@ class Decomposition(object):
                                 full_cost = ncost
                                 root1 = r1
                                 root2 = r2
+                    assert root1 >= 0 and root2 >= 0
+                    self.optimal_score = _psum(full_cost, self.optimal_score)
                     g.cluster_opts = sum(c1.optimals[i1] * c2.optimals[i2] for
                                          i1, r1 in enumerate(c1.roots) for i2, r2 in enumerate(c2.roots) if
                                          _psum(c1.pcosts[i1], c2.pcosts[i2], _score(g, r1, r2)) == full_cost)
@@ -271,15 +273,25 @@ class Decomposition(object):
                     source_child = c1
                 else:
                     raise ValueError("Node joined to non-reachable subtree")
-                max_cost = -1
+                max_cost = (-1, -1)
                 new_root = -1
                 for i, r in enumerate(source_child.roots):
                     ncost = _psum(source_child.pcosts[i], _score(g, g.root, r))
                     if ncost > max_cost:
                         new_root = r
                         max_cost = ncost
+                assert new_root >= 0
                 source_child.root = new_root
         self.number_of_optimal_solutions = reduce(lambda x, y: x*y, [g.cluster_opts for g in L.traverse()])
+
+
+    def _assert_sources(self):
+        internal_nids = [n.nid for f in self.F for n in f.iter_descendants()]
+        root_nids = [f.nid for f in self.F]
+        outside_nids = [n.nid for n in self.G.traverse() if n.nid not in internal_nids + root_nids]
+        source_nids = [n.nid for n in self.L.traverse() if n.source]
+        junction_nids = [n.nid for n in self.L.traverse() if any(c.source for c in n.children)]
+        assert junction_nids == outside_nids
 
     def locus_tree(self):
         """
@@ -702,8 +714,8 @@ if __name__ == "__main__":
     # print S
     # print G
 
-    G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss04/S08/gene_tree0.labelled.tree', format=9)
-    S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss04/S08/species_tree.labelled.tree', format=8)
+    #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/gene_tree0.labelled.tree', format=9)
+    #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/species_tree.labelled.tree', format=8)
 
     # G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
     # S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
@@ -712,14 +724,14 @@ if __name__ == "__main__":
     #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     #roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
 
-    # G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
-    # S = ete2.Tree('(a, b, c, d, e, f);')
-    # roots = [0, 1, 5, 8, 13, 14]
+    G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    S = ete2.Tree('(a, b, c, d, e, f);')
+    roots = [0, 1, 5, 8, 13, 14]
 
-    # TD = Decomposition(G, S, roots)
-    # TD.assign_topological_ranks()
-    # TD.forest()
-    # TD.locus_tree()
+    TD = Decomposition(G, S, roots)
+    TD.assign_topological_ranks()
+    TD.forest()
+    TD.locus_tree()
 
     s = time()
     D = decompose(G, S)
@@ -733,19 +745,22 @@ if __name__ == "__main__":
     L = D.locus_tree()
     e = time()
     print "Locus tree obtained in %.02f seconds" % (e - s)
-
+    D._assert_sources()
     print L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P'])
     clstrs = [g for g in L.traverse() if g.inspect and (g.is_root() or not g.up.inspect)]
 
     # for i in range(1000):
-    #     print i
+    #     if not i % 100: print i
+    #     S = ete2.Tree()
+    #     S.populate(20)
     #     G = ete2.Tree()
-    #     G.populate(100, names_library=[s.name for s in S], reuse_names=True)
+    #     G.populate(20, names_library=[s.name for s in S], reuse_names=True)
     #     D = decompose(G, S)
     #     F = D.forest()
     #     L = D.locus_tree()
-    #     lnms = [set([l.name for l in L.search_nodes(locus_id=i) if l.is_leaf()]) for i in set(l.locus_id for l in L)]
-    #     fnms = [set([l.name for l in f]) for f in F]
-    #
+    #     D._assert_sources()
+        # lnms = [set([l.name for l in L.search_nodes(locus_id=i) if l.is_leaf()]) for i in set(l.locus_id for l in L)]
+        # fnms = [set([l.name for l in f]) for f in F]
+
     #     assert all([l in fnms for l in lnms])
     #     assert all([l in lnms for l in fnms])

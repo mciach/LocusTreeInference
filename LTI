@@ -77,6 +77,7 @@ if __name__ == "__main__":
         print ' '.join(f.write(format=9) for f in forest)
     elif return_format == "tree":
         locus_tree = D.locus_tree()
+        D._assert_sources()
         print locus_tree.write(format=gene_format, features=["source", "locus_id", "I", "P"], format_root_node=True)
     elif return_format == "roots":
         for g in gene_tree:
