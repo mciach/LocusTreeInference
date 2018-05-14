@@ -468,7 +468,7 @@ def compute_mappings(G, S):
     """
     Computes both I and P mappings using Pawel's algorithm. Modifies G in situ.
     Leaf names in S are assumed to be unique.
-    Leaf names in G are assumed to correspond to leaf names in S (no identifiers!)
+    Leaf names in G are assumed to correspond to leaf names in S (no identifiers after underscore!)
     :param G: ete2.Tree
     :param S: ete2.Tree
     :return: None
@@ -478,8 +478,6 @@ def compute_mappings(G, S):
     except AttributeError:
         print("Species tree not initialized; Assign ranks before computing mappings.")
         raise
-    else:
-        S = S.copy()
 
     # I mapping
     for g in G.traverse(strategy="postorder"):
@@ -511,25 +509,27 @@ def compute_mappings(G, S):
                 g.smap = g.smap.up
 
 
-def assign_lineages(S):
+def unfold_tree(S):
     """
-    Assigns the evolutionary lineages (as lists of nodes) to leaves of S.
-    Works in situ, i.e. modifies S.
+    Unfolds a species tree into evolutionary lineages.
+    Returns a dictionary labelled by the leafs of S, containing the corresponding lineages
+    as lists of tree nodes.
     The species tree needs to be labelled with taxonomic ranks by the assign_ranks() function.
     :param S: ete2.Tree
     :return: None
     """
     _, d = S.get_farthest_leaf()
-    d = int(d) + 1
+    lineages = dict((s, []) for s in S)
     for s in S:
         p = s
-        lineage = [S] * d
+        lge = lineages[s]
         while not p.is_root():
             pp = p.up
-            for i in range(p.rank - 1, pp.rank - 1):
-                lineage[i] = p
+            lge.extend([p]*(pp.rank-p.rank))
             p = pp
-        s.lineage = lineage
+        lge.append(p)
+    assert all(len(lineages[l])==d+1 for l in lineages), "Error during tree unfolding. Please report this to the author"
+    return lineages
 
 
 def minimal_nodes(G):
@@ -554,9 +554,10 @@ def minimal_nodes(G):
     return [g for g in is_minimal if is_minimal[g]]
 
 
-def cut_tree(g, S):
+def cut_tree(g, lineages):
     """
-    Finds an optimal cut under a node g with respect to the reference species tree S.
+    Finds an optimal cut under a node g with respect to the reference species tree,
+    represented as a dictionary of evolutionary lineages.
     An optimal cut is chosen from egdes adjacent to the children of g.
     If the node is embeddable, it is returned and a warning is issued.
     The function estimates the loss cost as shown in the paper.
@@ -570,8 +571,9 @@ def cut_tree(g, S):
 
     def check_division(leafset1, leafset2, r):
         """
-        Checks if rank r divides evolutionary lineages of two leaf sets
-        (i.e. if their lineages have disjoint taxa in rank r-1).
+        Checks if rank r divides evolutionary lineages of two sets of
+        leaves from the gene tree
+        (i.e. if the lineages of their species have disjoint taxa in rank r-1).
         :param r: int
             The rank, an integer from 0 to height of S.
         :param leafset: set
@@ -582,8 +584,8 @@ def cut_tree(g, S):
             # This would mean that we check an internal node with I == 0 after pruning,
             # so there is no embeddability.
             return False
-        ancset1 = set([l.M.lineage[r - 1] for l in leafset1])
-        ancset2 = set([l.M.lineage[r - 1] for l in leafset2])
+        ancset1 = set([lineages[l.M][r - 1] for l in leafset1])
+        ancset2 = set([lineages[l.M][r - 1] for l in leafset2])
         return ancset1.isdisjoint(ancset2)
 
     if g.I == g.P and g.I > 0:
@@ -592,50 +594,117 @@ def cut_tree(g, S):
         raise ValueError("The node is a leaf - nothing to cut!")
     # Assigning candidate nodes for the root of the detached subtree
     dplc = g.children  # duplication-like candidates
-    hgtc1 = dplc[0].children  # hgt-like candidates; either 0 or 2
-    hgtc2 = dplc[1].children
-    lc1 = len(hgtc1)
-    lc2 = len(hgtc2)  # number of hgt-like candidates
-    embeddable = [True, True] + [False] * (lc1 + lc2)  # g's children always satisfy embeddability condition
-    loss_cost = [len(dplc[0].M) + len(dplc[1].M)] * 2 + [0] * (lc1 + lc2)
-    new_tree_size = [len(dplc[0]), len(dplc[1])] + [0] * (lc1 + lc2)
+    hgtc0 = dplc[0].children  # hgt-like candidates; either 0 or 2
+    hgtc1 = dplc[1].children
+    lc0 = len(hgtc0)
+    lc1 = len(hgtc1)  # number of hgt-like candidates
+    # dpl_emb = [True, True] #  g's children always satisfy embeddability condition
+    dpl_emb = [dplc[0].I == g.I, dplc[1].I == g.I]  # alternative condition
+    hgt0_emb = [False] * lc0
+    hgt1_emb = [False] * lc1
+    dpl_loss = [len(dplc[0].M) + len(dplc[1].M)] * 2
+    hgt0_loss = [-1] * lc0
+    hgt1_loss = [-1] * lc1
+    dpl_size = [len(dplc[0]), len(dplc[1])]  # sizes of cut trees
+    hgt0_size = [-1]*lc0
+    hgt1_size = [-1]*lc1
 
     # checking embeddability and loss cost
-    leafset2 = set(dplc[1])
-    for i in range(lc1):
-        # if hgtc1 not empty, then it has two elements; 1-i is the other one
-        leafset1 = set(hgtc1[1 - i])
-        newM = dplc[1].M.get_common_ancestor(hgtc1[1 - i].M)  # updated M mapping after removal of hgtc1[i]
+    if hgtc0:
+        leafset1 = set(dplc[1])
+        # checking first element of hgtc0
+        newM = dplc[1].M.get_common_ancestor(hgtc0[1].M)
         newI = newM.rank
-        embeddable[2 + i] = check_division(leafset1, leafset2, newI)
-        loss_cost[2 + i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
-        new_tree_size[2 + i] = len(hgtc1[i])
-
-    leafset2 = set(dplc[0])
-    for i in range(lc2):
-        leafset1 = set(hgtc2[1 - i])
-        newM = dplc[0].M.get_common_ancestor(hgtc2[1 - i].M)
+        hgt0_emb[0] = check_division(set(hgtc0[1]), leafset1, newI)
+        hgt0_loss[0] = len(hgtc0[0].M) + len(newM)
+        hgt0_size[0] = len(hgtc0[0])
+        # checking second element of hgtc0
+        newM = dplc[1].M.get_common_ancestor(hgtc0[0].M)
         newI = newM.rank
-        embeddable[2 + lc1 + i] = check_division(leafset1, leafset2, newI)
-        loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM)
-        new_tree_size[2 + lc1 + i] = len(hgtc2[i])
+        hgt0_emb[1] = check_division(set(hgtc0[0]), leafset1, newI)
+        hgt0_loss[1] = len(hgtc0[1].M) + len(newM)
+        hgt0_size[1] = len(hgtc0[1])
 
-    # not very efficient, but oh well
-    min_cost = min([loss_cost[i] for i in range(2 + lc1 + lc2) if embeddable[i]])
-    # embeddable & min cost:
-    good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2 + lc1 + lc2)]
-    target_size = min([new_tree_size[i] for i in range(2 + lc1 + lc2) if good_cut[i]])
-    # embeddable, min cost & min tree:
-    cut_id = [i for i in range(2 + lc1 + lc2) if good_cut[i] and new_tree_size[i] == target_size][0]
+    if hgtc1:
+        leafset1 = set(dplc[0])
 
-    if cut_id < 2:
-        newroot = dplc[cut_id]
-    elif cut_id < 2 + lc1:
-        newroot = hgtc1[cut_id - 2]
-    elif cut_id < 2 + lc1 + lc2:
-        newroot = hgtc2[cut_id - lc1 - 2]
-    else:
-        raise RuntimeError("Wrong rootnode id!")
+        newM = dplc[0].M.get_common_ancestor(hgtc1[1].M)
+        newI = newM.rank
+        hgt1_emb[0] = check_division(set(hgtc1[1]), leafset1, newI)
+        hgt1_loss[0] = len(hgtc1[0].M) + len(newM)
+        hgt1_size[0] = len(hgtc1[0])
+
+        newM = dplc[0].M.get_common_ancestor(hgtc1[0].M)
+        newI = newM.rank
+        hgt1_emb[1] = check_division(set(hgtc1[0]), leafset1, newI)
+        hgt1_loss[1] = len(hgtc1[1].M) + len(newM)
+        hgt1_size[1] = len(hgtc1[1])
+
+    candidates = dplc + hgtc0 + hgtc1
+    embeds = dpl_emb + hgt0_emb + hgt1_emb
+    costs = dpl_loss + hgt0_loss + hgt1_loss
+    sizes = dpl_size + hgt0_size + hgt1_size
+    assert all(c >= 0 for c in costs), "Negative cost detected. Please report this to the authors"
+
+    curr_candidate = candidates[0]
+    curr_cost = costs[0]
+    curr_size = sizes[0]
+    # identify first embeddable candidate; used for the alternative embeddability condition
+    # for the g's children
+    for i, e in enumerate(embeds):
+        if e:
+            curr_candidate = candidates[i]
+            curr_cost = costs[i]
+            curr_size = sizes[i]
+            break
+    # identify the best candidate
+    for i, c in enumerate(candidates[1:]):
+        if embeds[i+1] and costs[i+1] < curr_cost:
+            curr_candidate = c
+            curr_cost = costs[i+1]
+            curr_size = sizes[i+1]
+        elif embeds[i+1] and costs[i+1] == curr_cost and sizes[i+1] > curr_size:
+            curr_candidate = c
+            curr_cost = costs[i + 1]
+            curr_size = sizes[i + 1]
+
+    return curr_candidate
+
+    #
+    # for i in range(lc1):
+    #     # if hgtc1 not empty, then it has two elements; 1-i is the other one
+    #     leafset1 = set(hgtc1[1 - i])
+    #     newM = dplc[1].M.get_common_ancestor(hgtc1[1 - i].M)  # updated M mapping after removal of hgtc1[i]
+    #     newI = newM.rank
+    #     embeddable[2 + i] = check_division(leafset1, leafset2, newI)
+    #     loss_cost[2 + i] = len(hgtc1[i].M) + len(newM)  # turned out that investigating size of G is unneccessary
+    #     new_tree_size[2 + i] = len(hgtc1[i])
+    #
+    # leafset2 = set(dplc[0])
+    # for i in range(lc2):
+    #     leafset1 = set(hgtc2[1 - i])
+    #     newM = dplc[0].M.get_common_ancestor(hgtc2[1 - i].M)
+    #     newI = newM.rank
+    #     embeddable[2 + lc1 + i] = check_division(leafset1, leafset2, newI)
+    #     loss_cost[2 + lc1 + i] = len(hgtc2[i].M) + len(newM)
+    #     new_tree_size[2 + lc1 + i] = len(hgtc2[i])
+
+    # # not very efficient, but oh well
+    # min_cost = min([loss_cost[i] for i in range(2 + lc1 + lc2) if embeddable[i]])
+    # # embeddable & min cost:
+    # good_cut = [loss_cost[i] == min_cost and embeddable[i] for i in range(2 + lc1 + lc2)]
+    # target_size = min([new_tree_size[i] for i in range(2 + lc1 + lc2) if good_cut[i]])
+    # # embeddable, min cost & min tree:
+    # cut_id = [i for i in range(2 + lc1 + lc2) if good_cut[i] and new_tree_size[i] == target_size][0]
+    #
+    # if cut_id < 2:
+    #     newroot = dplc[cut_id]
+    # elif cut_id < 2 + lc1:
+    #     newroot = hgtc1[cut_id - 2]
+    # elif cut_id < 2 + lc1 + lc2:
+    #     newroot = hgtc2[cut_id - lc1 - 2]
+    # else:
+    #     raise RuntimeError("Wrong rootnode id!")
     return newroot
 
 
@@ -645,15 +714,24 @@ def decompose(gene_tree, species_tree):
     Returns the forest of subtrees as a list.
     :param gene_tree: ete2.Tree object
     :param species_tree:  ete2.Tree object
-        The reference species tree. The leaf names need to be unique.
+        The reference species tree. The leaf names need to be unique. The tree needs to be
+        ranked, i.e. each node needs to have an integer 'rank' attribute. Ranks
+        can be assigned e.g. by running the function assign_ranks(species_tree) from this package.
     :return: list
         A list of ete2.Tree objects, each one corresponding to one locus subtree from
         the decomposition forest.
     """
     G = gene_tree.copy()
-    S = species_tree.copy()
+    S = species_tree.copy()  # the tree will be modified in assign_ranks function
 
-    # validate the data
+    # checking ranks of S
+    for s in S.traverse():
+        if not hasattr(s, 'rank'):
+            raise ValueError("""Species tree is not ranked.\nPlease provide ranks e.g. by running assign_ranks(species_tree).""")
+        elif s.is_leaf() and s.rank != 0:
+            raise ValueError("Leaf of a species tree not ranked as 0")
+
+    # validate the labelling of leafs of S
     snames = set()
     for s in S:
         if s.name in snames:
@@ -661,20 +739,21 @@ def decompose(gene_tree, species_tree):
         else:
             snames.add(s.name)
 
-    # names of leaves are stripped from the identifiers
-    # original names of leaves in G are stored, to be assigned back at the end of the function
-    rawnames = dict((g, g.name) for g in G)
+
+
+    # names of leaves of G are stripped from the identifiers; original names are not used later,
+    # because original gene tree will be returned
     for g in G:
-        g.name = g.name.split('_')[0]
-        if g.name not in snames:
-            raise ValueError("The gene %s does not correspond to any species!" % g.name)
+        newname = g.name.split('_')[0]
+        if newname not in snames:
+            raise ValueError("The gene %s does not correspond to any species!" % newname)
+        g.name = newname
 
     for i, g in enumerate(G.traverse(strategy="postorder")):
         g.nid = i
 
     # initialize data
-    assign_ranks(S)
-    assign_lineages(S)
+    lineages = unfold_tree(S)
 
     # decompose
     improper = [G]  # list of minimal non-embeddable nodes
@@ -682,7 +761,8 @@ def decompose(gene_tree, species_tree):
     while improper:
         compute_mappings(G, S)
         improper = minimal_nodes(G)
-        subtrees = [cut_tree(g, S) for g in improper]
+        pass
+        subtrees = [cut_tree(g, lineages) for g in improper]
         roots += [s.nid for s in subtrees]
         map(lambda x: x.detach(), subtrees)
         # Pruning G. This is time costly, and ideally should be get rid of,
@@ -691,7 +771,7 @@ def decompose(gene_tree, species_tree):
             G = G.children[0]  # moving down the root, because pruning preserves it
         G.prune(G)  # removing nodes with single children
     roots.append(G.nid)
-    return Decomposition(gene_tree, S, roots)
+    return Decomposition(gene_tree, species_tree, roots)
 
 
 if __name__ == "__main__":
@@ -716,7 +796,7 @@ if __name__ == "__main__":
 
     #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/gene_tree0.labelled.tree', format=9)
     #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/species_tree.labelled.tree', format=8)
-
+    #assign_ranks(S)
     # G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
     # S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
 
@@ -724,14 +804,14 @@ if __name__ == "__main__":
     #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     #roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
 
-    G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
-    S = ete2.Tree('(a, b, c, d, e, f);')
-    roots = [0, 1, 5, 8, 13, 14]
+    #G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    #S = ete2.Tree('(a, b, c, d, e, f);')
+    #roots = [0, 1, 5, 8, 13, 14]
 
-    TD = Decomposition(G, S, roots)
-    TD.assign_topological_ranks()
-    TD.forest()
-    TD.locus_tree()
+    # TD = Decomposition(G, S, roots)
+    # TD.assign_topological_ranks()
+    # TD.forest()
+    # TD.locus_tree()
 
     s = time()
     D = decompose(G, S)
