@@ -143,7 +143,9 @@ class Decomposition(object):
                                 p.P = i
                     smap[l1] = smap[l1].up
 
-    def _lift_roots(self):
+    
+
+    def _lift_roots_new(self):
         """
         Labels the source nodes, i.e. the ends of cut edges, by adding a boolean 'source' attribute
         to each node of the locus tree.

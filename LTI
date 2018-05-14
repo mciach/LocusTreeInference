@@ -20,8 +20,10 @@ DESCRIPTION
     indicate the input gene tree format (as specified by ete3 documentation). 
 OPTIONS
     -g: Gene tree
-        Either a path to a file with the tree in Newick format, or the tree itself as a string.
     -s: Species tree
+        Either paths to files with the trees in Newick format, or the trees itself as strings.
+        The tree in Newick format needs to end with a semicolon.
+        NHX annotations are allowed, but will not be preserved in the output. 
     -f: Return forest
         Returns the forest obtained after decomposition.
         Otherwise, returns a gene tree with NHX attributes containing indicator if a node
@@ -34,6 +36,11 @@ OPTIONS
         from the decomposition forest.
     -e: Gene tree format
         Newick format of the input gene tree (as in ete2). Default: 9, leaf names only.
+        The format will be preserved in the locus tree output, but not in the forest or roots output. 
+    -n: Suppress automatic ranking
+        If this flag is not set, the species tree will be ranked automatically based on the nodes' topology.
+        Alternatively, one may specify the ranks as NHX attributes. Example: 
+        '(S3[&&NHX:rank=0],(S2[&&NHX:rank=0],S1[&&NHX:rank=0])[&&NHX:rank=1]);'
     
 """
 
@@ -43,10 +50,11 @@ if __name__ == "__main__":
     species_tree = None
     gene_tree = None
     gene_format = 9
+    automatic_ranking = True
     if len(sys.argv) <= 1:
         print help_text
         quit()
-    opts, args = getopt.getopt(sys.argv[1:], "g:s:e:fhr")
+    opts, args = getopt.getopt(sys.argv[1:], "g:s:e:fhrn")
     for opt, arg in opts:
         if opt == '-g':
             gene_tree = arg
@@ -61,6 +69,8 @@ if __name__ == "__main__":
             quit()
         elif opt == '-e':
             gene_format = int(arg)
+        elif opt == '-n':
+            automatic_ranking = False
 
     # if gene_tree[-1] != ';':
     #     gene_tree += ';'
@@ -69,7 +79,11 @@ if __name__ == "__main__":
 
     species_tree = ete2.Tree(species_tree, format=8)
     gene_tree = ete2.Tree(gene_tree, format=gene_format)
-    
+
+    if automatic_ranking:
+        from src.lineage_separation import assign_ranks
+        assign_ranks(species_tree)
+
     D = decompose(gene_tree, species_tree)
 
     if return_format == "forest":
