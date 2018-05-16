@@ -143,9 +143,7 @@ class Decomposition(object):
                                 p.P = i
                     smap[l1] = smap[l1].up
 
-    
-
-    def _lift_roots_new(self):
+    def _lift_roots(self):
         """
         Labels the source nodes, i.e. the ends of cut edges, by adding a boolean 'source' attribute
         to each node of the locus tree.
@@ -665,10 +663,10 @@ def cut_tree(g, lineages):
             curr_candidate = c
             curr_cost = costs[i+1]
             curr_size = sizes[i+1]
-        elif embeds[i+1] and costs[i+1] == curr_cost and sizes[i+1] > curr_size:
-            curr_candidate = c
-            curr_cost = costs[i + 1]
-            curr_size = sizes[i + 1]
+        # elif embeds[i+1] and costs[i+1] == curr_cost and sizes[i+1] > curr_size:
+        #     curr_candidate = c
+        #     curr_cost = costs[i + 1]
+        #     curr_size = sizes[i + 1]
 
     return curr_candidate
 
