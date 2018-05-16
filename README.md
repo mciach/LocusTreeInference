@@ -64,6 +64,7 @@ The annotation is designed for a visualisation software, which will be availiabl
 ## Licensing and Credit
 
 If you use the Locus Tree Inference in your work, please cite:
+
 Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Detecting Locus Acquisition Events in Gene Trees." *LIPIcs-Leibniz International Proceedings in Informatics.* Vol. 88. Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik, 2017.
 
 The software is licensed under General Public Licence 3.0. 
