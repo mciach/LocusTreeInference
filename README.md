@@ -11,7 +11,7 @@ The software can be used, among others, to:
 Currently, the gene tree needs to be binary, but the species tree can contain polytomies.
 The Locus Tree Inference method uses only the information about the trees' topologies (i.e. no branch lengths or supports needed). 
 
-Note that this is still a work in progress, so if you notice any inconvenience in using the software or want us to add some functionality, do not hesitate to leave a comment or contact us at m_ciach@student.uw.edu.pl. We'll be grateful for any remarks!  
+Note that this is still a work in progress, so if you notice any inconvenience in using the software or want us to add some functionality, do not hesitate to leave a comment or contact us at m_ciach@student.uw.edu.pl. 
 
 ## Installation
 
