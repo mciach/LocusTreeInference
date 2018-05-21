@@ -11,7 +11,7 @@ The software can be used, among others, to:
 Currently, the gene tree needs to be binary, but the species tree can contain polytomies.
 The Locus Tree Inference method uses only the information about the trees' topologies (i.e. no branch lengths or supports needed). 
 
-Note that this is still a work in progress, so if you notice any inconvenience in using the software or want us to add some functionality, do not hesitate to leave a comment or contact us at m_ciach@student.uw.edu.pl. We'll be grateful for any remarks!  
+Note that this is still a work in progress, so if you notice any inconvenience in using the software or want us to add some functionality, do not hesitate to leave a comment or contact us at m_ciach@student.uw.edu.pl. 
 
 ## Installation
 
@@ -64,6 +64,7 @@ The annotation is designed for a visualisation software, which will be availiabl
 ## Licensing and Credit
 
 If you use the Locus Tree Inference in your work, please cite:
-*Michał Ciach, Anna Muszewska, Paweł Górecki*, Detecting Locus Acquisition Events in Gene Trees, Proc. of WABI 2017
+
+Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Detecting Locus Acquisition Events in Gene Trees." *LIPIcs-Leibniz International Proceedings in Informatics.* Vol. 88. Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik, 2017.
 
 The software is licensed under General Public Licence 3.0. 
