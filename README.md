@@ -56,10 +56,11 @@ where the possible `OPTIONS` are:
 * `-h`: print help message and exit;
 * `-g`: specify gene tree;
 * `-s`: specify species tree; 
-* `-f`: return the decomposition as a forest.
 
 If the flag `-f` is not specified, the locus tree is returned as a Newick string with NHX annotations. 
 The annotation is designed for a visualisation software, which will be availiable here at the end of July. 
+
+Additional options are described in the help message.
 
 ## Licensing and Credit
 
@@ -68,3 +69,5 @@ If you use the Locus Tree Inference in your work, please cite:
 Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Detecting Locus Acquisition Events in Gene Trees." *LIPIcs-Leibniz International Proceedings in Informatics.* Vol. 88. Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik, 2017.
 
 The software is licensed under General Public Licence 3.0. 
+
+The LTI software is developed using the ![http://etetoolkit.org/](ETE toolkit).
