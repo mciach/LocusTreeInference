@@ -70,4 +70,4 @@ Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Detecting Locus
 
 The software is licensed under General Public Licence 3.0. 
 
-The LTI software is developed using the ![ETE toolkit](http://etetoolkit.org/).
+The LTI software is developed using the [ETE toolkit](http://etetoolkit.org/).
