@@ -35,7 +35,7 @@ where `GENE TREE` and `SPECIES TREE` are strings encoding trees in Newick format
 The names of leaves of the have to correspond to the names of leaves of the species tree, possibly with an identifier after an underscore.
 Running this command will return a forest of subtrees resulting from decomposition of the GENE TREE.
 
-### Example 
+### Examples
 
 ```shell 
 python decompose_history.py -f -g '(((a, c), d), (a, b));' -s '((a, b), (c, d));'
@@ -53,14 +53,15 @@ The general syntax for the software is
 python decompose_history.py [OPTIONS]
 ```
 
-where the possible `OPTIONS` are:
+where the possible `OPTIONS` include:
 
 * `-h`: print help message and exit;
 * `-g`: specify gene tree;
 * `-s`: specify species tree; 
+* `-f`: return the result as a forest;
 
 If the flag `-f` is not specified, the locus tree is returned as a Newick string with NHX annotations. 
-The annotation is designed for a visualisation software, which will be availiable here at the end of July. 
+The annotation is designed for the visualization program (visualize_decomposition.py). 
 
 Additional options are described in the help message.
 
