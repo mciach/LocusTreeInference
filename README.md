@@ -28,7 +28,7 @@ git clone https://github.com/mciach/LocusTreeInference
 The basic usage of the software is 
 
 ```shell
-python decompose_history.py -f -g GENE TREE -s SPECIES TREE 
+python3 LTI.py -f -g GENE TREE -s SPECIES TREE 
 ```
 
 where `GENE TREE` and `SPECIES TREE` are strings encoding trees in Newick format. 
@@ -38,11 +38,11 @@ Running this command will return a forest of subtrees resulting from decompositi
 ### Examples
 
 ```shell 
-python decompose_history.py -f -g '(((a, c), d), (a, b));' -s '((a, b), (c, d));'
+python3 LTI.py -f -g '(((a, c), d), (a, b));' -s '((a, b), (c, d));'
 ```
 
 ```shell 
-python decompose_history.py -f -g '(((a_1, c_1), d_1), (a_2, b_1));' -s '((a, b), (c, d));'
+python3 LTI.py -f -g '(((a_1, c_1), d_1), (a_2, b_1));' -s '((a, b), (c, d));'
 ```
 
 ## Usage
@@ -50,14 +50,14 @@ python decompose_history.py -f -g '(((a_1, c_1), d_1), (a_2, b_1));' -s '((a, b)
 The general syntax for the software is 
 
 ```shell 
-python decompose_history.py [OPTIONS]
+python3 LTI.py [OPTIONS]
 ```
 
 where the possible `OPTIONS` include:
 
-* `-h`: print help message and exit;
-* `-g`: specify gene tree;
-* `-s`: specify species tree; 
+* `-h`: print the help message and exit;
+* `-g`: specify the gene tree;
+* `-s`: specify the species tree; 
 * `-f`: return the result as a forest;
 
 If the flag `-f` is not specified, the locus tree is returned as a Newick string with NHX annotations. 
