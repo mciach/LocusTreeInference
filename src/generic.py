@@ -2,6 +2,7 @@
 Methods to handle decomposition results regardless of algorithm used
 """
 from warnings import warn
+import re
 
 def assign_ranks(tree):
     """
@@ -22,6 +23,7 @@ class Decomposition(object):
         """
         A locus decomposition of a gene tree with respect to a given species tree.
         :param gene_tree: ete2.Tree
+            A gene tree. Each leaf name needs to correspond exactly to one leaf name of the species tree.
         :param species_tree: ete2.Tree
             A ranked species tree. Each node nees to have a 'rank' attribute.
             If the supplied species tree is not ranked, it is possible to assign artificial
@@ -57,9 +59,22 @@ class Decomposition(object):
 
     def _map_gene_to_species(self):
         for l in self.G:
-            l.species = self.S.get_leaves_by_name(l.name.split('_')[0])
-            assert len(l.species) == 1, "Species names are not unique!"
-            l.species = l.species[0]
+            matching_species = []
+            for s in self.S:
+                if re.match(s.name, l.name):
+                    matching_species.append(s)
+            matching_nb = len(matching_species)
+            if matching_nb == 0:
+                raise ValueError('Gene tree leaf %s does not correspond to any species!' % original_gene_names[i])
+            elif matching_nb > 1:
+                raise ValueError('Ambiguous species mapping for gene tree leaf %s' % (original_gene_names[i], matching_names[0], matching_names[1]))
+            else:
+                l.species = matching_species[0]
+##        for l in self.G:
+##            l.species = self.S.get_leaves_by_name(l.name.split('_')[0])
+##            assert len(l.species) == 1, "Species names are not unique!"
+##            l.species = l.species[0]
+
 
     def _assign_locus_ids(self):
         """

@@ -4,6 +4,7 @@ from src.generic import Decomposition
 import getopt
 import sys
 import ete3
+import re
 
 help_text = """
 NAME
@@ -25,9 +26,9 @@ OPTIONS
         Either paths to files with the trees in Newick format, or the trees itself as strings.
         The tree in Newick format needs to end with a semicolon.
         NHX annotations are allowed, but will not be preserved in the output.
-        The gene tree leaves need to follow a SPECIES_GENE convention,
+        The gene tree leaves need to follow a SPECIESGENE convention,
         i.e. each leaf name of the gene tree needs to contain the name of the corresponding
-        species, followed by an underscore, followed by an identifier.
+        species tree leaves as a prefix. If the naming is ambiguous, an error is raised.
     -a: Algorithm used
         The algorithm used for decomposition. Possible options:
             D: dynamic programming; optimal decomposition in quadratic time and memory
@@ -98,11 +99,22 @@ if __name__ == "__main__":
     S = ete3.Tree(species_tree, format=8)
     G = ete3.Tree(gene_tree, format=gene_format)
     species_names = set(l.name for l in S)
+    assert len(S) == len(species_names), 'Species names are not unique!'
     original_gene_names = [l.name for l in G]
+    # Checking naming correctness:
     for i, l in enumerate(G):
-        l.name = '_'.join(l.name.split('_')[:-1])
-        assert (l.name in species_names), 'Gene tree leaf %s does not correspond to any species!' % original_gene_names[i]
-    
+        matching_names = []
+        for sname in species_names:
+            if re.match(sname, l.name):
+                matching_names.append(sname)
+        matching_nb = len(matching_names)
+        if matching_nb == 0:
+            raise ValueError('Gene tree leaf %s does not correspond to any species!' % original_gene_names[i])
+        elif matching_nb > 1:
+            raise ValueError('Ambiguous species mapping for gene tree leaf %s (including species %s and %s)' % (original_gene_names[i], matching_names[0], matching_names[1]))
+        else:
+            l.name = matching_names[0]
+            
     if automatic_ranking:
         from src.generic import assign_ranks
         assign_ranks(S)
