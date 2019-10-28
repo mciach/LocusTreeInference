@@ -69,6 +69,5 @@ Additional options are described in the help message.
 
 If you use the Locus Tree Inference in your work, please cite:
 
-Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Detecting Locus Acquisition Events in Gene Trees." *LIPIcs-Leibniz International Proceedings in Informatics.* Vol. 88. Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik, 2017.
+Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Locus-aware decomposition of gene trees with respect to polytomous species trees." Algorithms for Molecular Biology 13.1 (2018): 11.
 
-The software is licensed under General Public Licence 3.0. 
