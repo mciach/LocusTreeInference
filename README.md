@@ -67,7 +67,7 @@ Additional options are described in the help message.
 
 ## Licensing and Credit
 
-If you use the Locus Tree Inference in your work, please cite:
+If you use LTI in your work, please cite:
 
 Ciach, Michał Aleksander, Anna Muszewska, and Paweł Górecki. "Locus-aware decomposition of gene trees with respect to polytomous species trees." Algorithms for Molecular Biology 13.1 (2018): 11.
 
