@@ -20,16 +20,19 @@ DESCRIPTION
     preserve branch lenghts and/or supports in the results, please
     indicate the input gene tree format (as specified by ete3 documentation). 
 OPTIONS
-    -g: Gene tree
     -s: Species tree
+    -g: Gene tree
         Either paths to files with the trees in Newick format, or the trees itself as strings.
         The tree in Newick format needs to end with a semicolon.
-        NHX annotations are allowed, but will not be preserved in the output. 
+        NHX annotations are allowed, but will not be preserved in the output.
+        Each leaf name of the gene tree is assumed to be a species name,
+        followed by an underscore, followed by an identifier
+        (e.g. a gene tree leaf E_coli_1 corresponds to a species tree leaf E_coli).
     -a: Algorithm used
         The algorithm used for decomposition. Possible options:
-            'D': dynamic programming; optimal decomposition in quadratic time and memory
-            'H': heuristic; less optimal results in linear memory 
-            'A': automatic choice; dynamic programming for gene trees with less than 40 leafs.
+            D: dynamic programming; optimal decomposition in quadratic time and memory
+            H: heuristic; less optimal results in linear memory 
+            A: automatic choice; dynamic programming for gene trees with less than 40 leafs.
         Default is the automatic choice. 
     -f: Return forest
         Returns the forest obtained after decomposition.
@@ -94,20 +97,35 @@ if __name__ == "__main__":
     # using ete's parser to get info on trees
     S = ete2.Tree(species_tree, format=8)
     G = ete2.Tree(gene_tree, format=gene_format)
-
+    species_names = set(l.name for l in S)
+    original_gene_names = [l.name for l in G]
+    for i, l in enumerate(G):
+        l.name = '_'.join(l.name.split('_')[:-1])
+        assert l.name in species_names, 'Gene tree leaf %s does not correspond to any species!' % original_gene_names[i]
+    
     if automatic_ranking:
-        from src.heuristic import assign_ranks
+        from src.generic import assign_ranks
         assign_ranks(S)
-
+        
+    # Decomposing
     if not dynamic_programming or len(G) > 20:
-        D = heuristic.decompose(G, S)
+        roots = heuristic.decompose(G, S)
     else:
-        MS = multitree.Tree(species_tree)
-        MG = multitree.Tree(gene_tree)
+        Gc = G.copy('deepcopy')
+        MS = S.write(format=9)
+        MG = Gc.write(format=9)
+        MS = MS.replace(';', '')
+        MG = MG.replace(';', '')
+        MS = multitree.Tree(MS)
+        MG = multitree.Tree(MG)
         roots = dynamic.decompose(MG, MS)
         roots = roots.next()
-        D = Decomposition(G, S, roots)
+    # Restoring original leaf names:
+    for on, l in zip(original_gene_names, G):
+        l.name = on
 
+    # Returning results
+    D = Decomposition(G, S, roots)
     if return_format == "forest":
         forest = D.forest()
         print ' '.join(f.write(format=gene_format) for f in forest)

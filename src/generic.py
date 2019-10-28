@@ -3,6 +3,20 @@ Methods to handle decomposition results regardless of algorithm used
 """
 from warnings import warn
 
+def assign_ranks(tree):
+    """
+    Assings taxonomic ranks (depths of a node) to a tree.
+    Modifies the tree in situ.
+    :param tree: ete2.Tree
+    :return: None
+    """
+    T = tree
+    for n in T.traverse(strategy="postorder"):
+        if n.is_leaf():
+            n.rank = 0
+        else:
+            n.rank = max(c.rank for c in n.children) + 1
+            
 class Decomposition(object):
     def __init__(self, gene_tree, species_tree, roots):
         """
@@ -17,11 +31,11 @@ class Decomposition(object):
         :param roots: list
             A list of identifiers (in post-order numbering) of the roots of trees from the decomposition forest.
         """
-        self.G = gene_tree
+        self.G = gene_tree.copy()
         for i, g in enumerate(self.G.traverse(strategy="postorder")):
             g.nid = i  # used to identify e.g. forest roots
         self.G_labelled = False  # whether G has been labelled with raw I/P mappings
-        self.S = species_tree
+        self.S = species_tree.copy()
         self.roots = sorted(roots)
         self.F = []  # forest; self.F[i] corresponds to self.roots[i]
         self.L = None  # locus tree
@@ -44,8 +58,7 @@ class Decomposition(object):
     def _map_gene_to_species(self):
         for l in self.G:
             l.species = self.S.get_leaves_by_name(l.name.split('_')[0])
-            assert len(l.species) == 1;
-            "Species names are not unique!"
+            assert len(l.species) == 1, "Species names are not unique!"
             l.species = l.species[0]
 
     def _assign_locus_ids(self):
@@ -111,7 +124,7 @@ class Decomposition(object):
                 if not same_locus or not same_pureM:
                     pureM[g] = None
                     warn("Detected an extinct lineage (node id %i); This may indicate corrupted data." % g.nid)
-                    print g.get_ascii(attributes=['name', 'nid'])
+                    print(g.get_ascii(attributes=['name', 'nid']))
                 elif len(same_pureM) == 1:
                     pureM[g] = same_pureM[0]
                 else:
@@ -283,7 +296,9 @@ class Decomposition(object):
                         max_cost = ncost
                 assert new_root >= 0
                 source_child.root = new_root
-        self.number_of_optimal_solutions = reduce(lambda x, y: x*y, [g.cluster_opts for g in L.traverse()])
+        self.number_of_optimal_solutions = 1
+        for g in L.traverse():
+            self.number_of_optimal_solutions *= g.cluster_opts 
 
 
     def _assert_sources(self):

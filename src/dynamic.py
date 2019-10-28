@@ -196,5 +196,3 @@ def decompose(gt, st, weights=(1, 1000)):
             yield tuple(i.nodeid for i in t)
 
 
-gtr = Tree('((a, a), b)')
-str = Tree('(a, b)')

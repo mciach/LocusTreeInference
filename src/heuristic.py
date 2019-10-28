@@ -2,23 +2,8 @@
 Methods to perform heuristic decomposition
 """
 
-import ete2
-from generic import Decomposition
-
-
-def assign_ranks(tree):
-    """
-    Assings taxonomic ranks (depths of a node) to a tree.
-    Modifies the tree in situ.
-    :param tree: ete2.Tree
-    :return: None
-    """
-    T = tree
-    for n in T.traverse(strategy="postorder"):
-        if n.is_leaf():
-            n.rank = 0
-        else:
-            n.rank = max(c.rank for c in n.children) + 1
+import ete3
+from generic import Decomposition, assign_ranks
 
 
 def compute_mappings(G, S):
@@ -296,8 +281,6 @@ def decompose(gene_tree, species_tree):
         else:
             snames.add(s.name)
 
-
-
     # names of leaves of G are stripped from the identifiers; original names are not used later,
     # because original gene tree will be returned
     for g in G:
@@ -318,72 +301,54 @@ def decompose(gene_tree, species_tree):
     while improper:
         compute_mappings(G, S)
         improper = minimal_nodes(G)
-        pass
         subtrees = [cut_tree(g, lineages) for g in improper]
         roots += [s.nid for s in subtrees]
-        map(lambda x: x.detach(), subtrees)
+        for s in subtrees:
+            s.detach()
         # Pruning G. This is time costly, and ideally should be get rid of,
         # but is required in the current implementation.
         while len(G.children) == 1:
             G = G.children[0]  # moving down the root, because pruning preserves it
         G.prune(G)  # removing nodes with single children
     roots.append(G.nid)
-    return Decomposition(gene_tree, species_tree, roots)
+    return roots
 
 
 if __name__ == "__main__":
     from time import time
 
-    # S = ete2.Tree('(((a, b), (c, d)), (e, (f, g)));')
-    # G = ete2.Tree('((((a_1, c_1), b_1), (e_1, f_1)), (c_2, ((g_1, f_2), (d_1, a_2))));')
-    # S = ete2.Tree('(a, b);')
-    # G = ete2.Tree('((a, b), (a, b));')
-    # S = ete2.Tree('(((a, b), (c, d)), d);')
-    # G = ete2.Tree('((((a, b), (c, d)), (a, b)), d);')
-    # S = ete2.Tree("(a, b);")
-    # G = ete2.Tree("(((a, a), (a, a)), (b, b));")
-    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/TransferOnly/Loss00/S00/species_tree.labelled.tree', format=8)
-    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/TransferOnly/Loss00/S00/gene_tree2.simdec.tree')
-    # G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss01/S01/gene_tree2.simdec.tree', format=9)
-    # S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss01/S01/species_tree.labelled.tree', format=8)
-    # S = ete2.Tree('((v, s), (x, w));')
-    # G = ete2.Tree('(((s, v), x), (w, w));')
-    # print S
-    # print G
-
-    #G = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/gene_tree0.labelled.tree', format=9)
-    #S = ete2.Tree('/home/ciach/Projects/TreeDecomposition/ScoringSystem/BothEvents/Loss00/S00/species_tree.labelled.tree', format=8)
+    #G = ete3.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
+    #S = ete3.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     #assign_ranks(S)
-    # G = G.get_common_ancestor(G&"S228_1", G&"S290_1")
-    # S = S.get_common_ancestor([S&g.name.split('_')[0] for g in G])
-
-    #G = ete2.Tree('((((((((S21_1:1,(S22_3:1,(S22_9:1,S22_10:1)1:1)1:1)1:1,((S24_1:1,(S25_1:1,S26_1:1)1:1)1:1,((S29_9:1,(S35_14:1,S6_4:1)1:1)1:1,(S0_5:1,S0_6:1)1:1)1:1)1:1)1:1,S32_1:1)1:1,(((((S21_7:1,(S21_11:1,(S22_15:1,S38_7:1)1:1)1:1)1:1,S21_4:1)1:1,(S22_5:1,S22_6:1)1:1)1:1,(((S25_3:1,S26_3:1)1:1,S29_6:1)1:1,(S25_2:1,(S49_3:1,S26_4:1)1:1)1:1)1:1)1:1,(S32_3:1,S32_4:1)1:1)1:1)1:1,((S34_4:1,S35_2:1)1:1,S35_1:1)1:1)1:1,(((S38_3:1,((S63_3:1,(S64_3:1,S65_3:1)1:1)1:1,(S24_3:1,S43_4:1)1:1)1:1)1:1,((S39_2:1,S39_3:1)1:1,((S40_1:1,S41_1:1)1:1,(S43_3:1,S44_1:1)1:1)1:1)1:1)1:1,(S49_1:1,((S50_2:1,S50_3:1)1:1,(S51_2:1,S29_2:1)1:1)1:1)1:1)1:1)1:1,(((S56_1:1,S57_1:1)1:1,((S60_2:1,S60_3:1)1:1,S34_2:1)1:1)1:1,((S56_2:1,(S29_1:1,S57_3:1)1:1)1:1,((S63_1:1,(S64_1:1,S65_1:1)1:1)1:1,(S63_2:1,(S64_2:1,S65_2:1)1:1)1:1)1:1)1:1)1:1)1:1,(S19_2:1,(S19_3:1,(((((((S21_9:1,S21_10:1)1:1,(S35_10:1,(((S25_5:1,S26_9:1)1:1,S22_17:1)1:1,(S22_18:1,S22_19:1)1:1)1:1)1:1)1:1,(((S43_6:1,S24_5:1)1:1,(S25_4:1,(S26_7:1,S26_8:1)1:1)1:1)1:1,S29_7:1)1:1)1:1,(S32_6:1,S32_7:1)1:1)1:1,(((S21_6:1,(S2_1:1,S22_12:1)1:1)1:1,(S29_8:1,(S56_4:1,(S57_8:1,S57_9:1)1:1)1:1)1:1)1:1,((S35_11:1,S35_12:1)1:1,(S61_1:1,S35_13:1)1:1)1:1)1:1)1:1,((S49_2:1,(S60_4:1,(S50_4:1,S51_3:1)1:1)1:1)1:1,(S39_4:1,((S40_2:1,(S41_4:1,S26_6:1)1:1)1:1,((S21_12:1,S43_7:1)1:1,S44_2:1)1:1)1:1)1:1)1:1)1:1,(((((S35_7:1,S35_8:1)1:1,S0_3:1)1:1,((S1_2:1,(S2_3:1,(S2_8:1,S2_9:1)1:1)1:1)1:1,S4_1:1)1:1)1:1,(((((S1_3:1,(S2_10:1,S1_6:1)1:1)1:1,(S34_6:1,S61_2:1)1:1)1:1,(((S0_7:1,S1_7:1)1:1,(S2_11:1,S60_5:1)1:1)1:1,S4_3:1)1:1)1:1,(((S1_5:1,(S39_5:1,(S2_15:1,S2_16:1)1:1)1:1)1:1,(S4_6:1,S4_7:1)1:1)1:1,S6_3:1)1:1)1:1,((S41_2:1,S8_1:1)1:1,(((S11_5:1,S11_6:1)1:1,(S12_2:1,S13_2:1)1:1)1:1,(S11_4:1,(((S12_4:1,S13_4:1)1:1,(S12_5:1,S13_5:1)1:1)1:1,(S12_3:1,S13_3:1)1:1)1:1)1:1)1:1)1:1)1:1)1:1,((((S11_2:1,S1_1:1)1:1,(S12_1:1,S13_1:1)1:1)1:1,(S56_3:1,(S57_5:1,S57_6:1)1:1)1:1)1:1,S19_4:1)1:1)1:1)1:1)1:1)1:1);')
-    #S = ete2.Tree('(((S0:1,((((S1:1,S2:1)1:1,S4:1)1:1,S6:1)1:1,((S8:1,S9:1)1:1,(S11:1,(S12:1,S13:1)1:1)1:1)1:1)1:1)1:1,S19:1)1:1,(((((((S21:1,S22:1)1:1,((S24:1,(S25:1,S26:1)1:1)1:1,S29:1)1:1)1:1,S32:1)1:1,(S34:1,S35:1)1:1)1:1,((S38:1,(S39:1,((S40:1,S41:1)1:1,(S43:1,S44:1)1:1)1:1)1:1)1:1,(S49:1,(S50:1,S51:1)1:1)1:1)1:1)1:1,(S56:1,S57:1)1:1)1:1,(((S60:1,S61:1)1:1,(S63:1,(S64:1,S65:1)1:1)1:1)1:1,S69:1)1:1)1:1);')
     #roots = [1, 2, 14, 17, 24, 25, 27, 34, 40, 44, 50, 57, 61, 66, 67, 72, 85, 89, 98, 105, 113, 124, 125, 128, 131, 134, 140, 144, 152, 157, 163, 166, 168, 169, 172, 179, 188, 191, 200, 206, 207, 213, 217, 220, 221, 223, 224, 228, 235, 236, 241, 244, 248, 251, 257, 261, 274, 276, 281, 283, 288]
 
-    #G = ete2.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
-    #S = ete2.Tree('(a, b, c, d, e, f);')
+    G = ete3.Tree('(((a, b), ((a, c), (c, d))), ((b, d), f));')
+    S = ete3.Tree('(a, b, c, d, e, f);')
+    assign_ranks(S)
     #roots = [0, 1, 5, 8, 13, 14]
 
     # TD = Decomposition(G, S, roots)
     # TD.assign_topological_ranks()
     # TD.forest()
     # TD.locus_tree()
-
+    #G = ete3.Tree('(a, (a,b));', format=8)
+    #S = ete3.Tree('(a, b);', format=8)
+    
     s = time()
-    D = decompose(G, S)
+    R = decompose(G, S)
     e = time()
-    print "Decomposed in %.02f seconds" % (e - s)
+    print("Decomposed in %.02f seconds" % (e - s))
+    D = Decomposition(G, S, R)
     s = time()
     F = D.forest()
     e = time()
-    print "Forest obtained in %.02f seconds" % (e - s)
+    print("Forest obtained in %.02f seconds" % (e - s))
     s = time()
     L = D.locus_tree()
     e = time()
-    print "Locus tree obtained in %.02f seconds" % (e - s)
+    print("Locus tree obtained in %.02f seconds" % (e - s))
     D._assert_sources()
-    print L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P'])
+    print(L.get_ascii(attributes=['name', 'nid', 'source', 'type', 'I', 'P']))
     clstrs = [g for g in L.traverse() if g.inspect and (g.is_root() or not g.up.inspect)]
 
     # for i in range(1000):

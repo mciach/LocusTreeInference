@@ -75,7 +75,7 @@ if __name__=="__main__":
     idFace = faces.AttrFace("id", fsize=8)
     for i, g in enumerate(gene_tree.traverse(strategy="postorder")):
         g.id = i
-        g.name = g.name.split('_')[0]
+        #g.name = g.name.split('_')[0]
         g.coloured = False
         g.nw = g.source
         g.source = True if g.source == 'True' else False
