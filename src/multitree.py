@@ -3,7 +3,7 @@ import random
 import itertools
 import sys
 
-lfalf=[ chr(i) for i in xrange(ord('a'),ord('z')) ]+[ chr(i) for i in xrange(ord('A'),ord('Z')) ]
+lfalf=[ chr(i) for i in range(ord('a'),ord('z')) ]+[ chr(i) for i in range(ord('A'),ord('Z')) ]
 
 
 gencomment="""
@@ -49,12 +49,12 @@ def str2tree(s):
             lab=lab+s[0]
             s=s[1:]
         if not lab:
-            print "Label expected in tree string"
+            print("Label expected in tree string")
             sys.exit(1)
         return (lab,s)
 
     if not s.strip():
-        print "Warning: empty string"
+        print("Warning: empty string")
         return []
 
     return _st(s)[0]
@@ -96,7 +96,7 @@ def _randtree(lst,chnum=0):
 
     if chnum:
         cher=[]
-        for i in xrange(chnum):
+        for i in range(chnum):
             cher.append((lf.pop(random.randint(0,len(lf)-1)),lf.pop(random.randint(0,len(lf)-1))))
         lf.extend(cher)        
 
@@ -148,7 +148,11 @@ class Tree:
     def inferinternalmaps(self):
         for g in self.nodes:
             if g.c:
-                g.map=reduce(lambda s,g: s.lca(g.map),g.c,g.c[0].map)
+                newmap = g.c[0].map
+                for c in g.c:
+                    newmap = newmap.lca(c.map)
+                g.map = newmap
+                #g.map=reduce(lambda s,g: s.lca(g.map),g.c,g.c[0].map)
 
     def setlcamapping(self,st):
 
@@ -210,10 +214,10 @@ class Tree:
             res=[]            
             
             if verboselevel & 8: 
-                print "==== MERGE %s rank=%d Lambda=%s"%(n,n.rank,np(lst))                
+                print("==== MERGE %s rank=%d Lambda=%s"%(n,n.rank,np(lst)))
             while lst:                
-                minleafid=min(lst[i][0].id for i in xrange(len(lst)))
-                for i in xrange(len(lst)):
+                minleafid=min(lst[i][0].id for i in range(len(lst)))
+                for i in range(len(lst)):
                     if lst[i][0].id==minleafid:
                         lst[i].pop(0)
                         if not lst[i]: lst.pop(i)
@@ -223,21 +227,21 @@ class Tree:
                     lcagnode=res[-1].lca(minleaf)             
 
                     if verboselevel & 8: 
-                        print "  Checking %s%d %s%d g=%s g.rank=%d:"%(res[-1],res[-1].id,
-                            minleaf,minleaf.id,lcagnode,lcagnode.esrbyalg),
+                        print( " Checking %s%d %s%d g=%s g.rank=%d:"%(res[-1],res[-1].id,
+                            minleaf,minleaf.id,lcagnode,lcagnode.esrbyalg),)
                     if not lcagnode.esrbyalg: 
                         if verboselevel & 8: 
-                            print "  Rank SET!",n.rank
+                            print("  Rank SET!",n.rank)
 
                         lcagnode.esrbyalg=n.rank
                         lcagnode.minr=[res[-1],minleaf]                                                  
 
                     else: 
-                        if verboselevel & 8: print "  Rank Ignored :("
+                        if verboselevel & 8: print(" Rank Ignored :(")
                 res.append(minleaf)
 
             if verboselevel & 8: 
-                print "MergeResult",np([res])
+                print("MergeResult",np([res]))
             return res
 
         
@@ -250,7 +254,7 @@ class Tree:
             if not n.leaf():
                 #print n.esr,n.esrbyalg,n
                 if n.esr!=n.esrbyalg:
-                    print "ERR"
+                    print("ERR")
                     sys.exit(-1)
     
 
@@ -267,22 +271,22 @@ class Tree:
         for n in self.nodes: n.esrbyalg2=0 # init  
         for n in s.nodes: n.lastgleaf=0 # init
         d=max(n.rank for n in s.nodes)
-        for r in xrange(1,d+1):
-            if verboselevel & 8: print "="*30,"rank=%d"%r
+        for r in range(1,d+1):
+            if verboselevel & 8: print("="*30,"rank=%d"%r)
             for v in glprefix:
-                if verboselevel & 8: print v,v.smap,v.smap.rank
+                if verboselevel & 8: print(v,v.smap,v.smap.rank)
                 if v.smap.rank!=r: continue
                 if v.smap.lastgleaf: 
                     l=v.smap.lastgleaf
                     lcagnode=v.smap.lastgleaf.lca(v)  
                     
                     if verboselevel & 8: 
-                        print "  Checking %s%d %s%d g=%s g.rank=%d:"%(l,l.id,
-                            v,v.id,lcagnode,lcagnode.esrbyalg2),
+                        print("Checking %s%d %s%d g=%s g.rank=%d:"%(l,l.id,
+                            v,v.id,lcagnode,lcagnode.esrbyalg2),)
                     
                     if not lcagnode.esrbyalg2:
                         if verboselevel & 8: 
-                            print "  Rank SET!",r
+                            print("  Rank SET!",r)
                         lcagnode.esrbyalg2=r # set rank
                         lcagnode.minr=[v.smap.lastgleaf,v]
                 v.smap.lastgleaf=v
@@ -292,8 +296,8 @@ class Tree:
         for n in self.nodes:
             if not n.leaf():
                 if n.esr!=n.esrbyalg2:
-                    print n.esr,n.esrbyalg2,n
-                    print "ERR2"
+                    print(n.esr,n.esrbyalg2,n)
+                    print("ERR2")
                     sys.exit(-1)      
 
     def ppgse(self):

@@ -3,7 +3,7 @@ Methods to perform decomposition with dynamic programming
 """
 
 import itertools
-from multitree import Tree
+from .multitree import Tree
 
 FOUTSIDE=0
 FROOT=1

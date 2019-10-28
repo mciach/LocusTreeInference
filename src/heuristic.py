@@ -3,7 +3,7 @@ Methods to perform heuristic decomposition
 """
 
 import ete3
-from generic import Decomposition, assign_ranks
+from .generic import Decomposition, assign_ranks
 
 
 def compute_mappings(G, S):
