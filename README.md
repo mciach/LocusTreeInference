@@ -13,7 +13,7 @@ The Locus Tree Inference method uses only the information about the trees' topol
 
 Note that this is still a work in progress, so if you notice any inconvenience in using the software or want us to add some functionality, do not hesitate to leave a comment or contact us at m_ciach@student.uw.edu.pl.
 
-The LTI software is developed using the [ETE toolkit](http://etetoolkit.org/).
+The LTI software is developed using Python 3 and the [ETE toolkit](http://etetoolkit.org/).
 
 ## Installation
 
