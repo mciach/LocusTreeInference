@@ -118,14 +118,14 @@ class Decomposition(object):
             print("Locus tree not initialized; Assign locus IDs before computing mappings.")
             raise
 
+
         # I mapping
         pureM = dict((g.nid, S) for g in L.traverse(strategy="postorder"))  # I from single loci
         combinedM = pureM.copy()  # I at junction nodes from neighbouring loci
         smap = dict((g, S) for g in L)
         for g in L.traverse(strategy="postorder"):
             if g.is_leaf():
-                g_species = g.name.split('_')[0]
-                g_species = S.get_leaves_by_name(name=g_species)[0]
+                g_species = g.species
                 pureM[g] = g_species
                 combinedM[g] = g_species
                 smap[g] = g_species

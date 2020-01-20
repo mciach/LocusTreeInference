@@ -273,21 +273,21 @@ def decompose(gene_tree, species_tree):
         elif s.is_leaf() and s.rank != 0:
             raise ValueError("Leaf of a species tree not ranked as 0")
 
-    # validate the labelling of leafs of S
-    snames = set()
-    for s in S:
-        if s.name in snames:
-            raise ValueError("Node names of the species tree are not unique!")
-        else:
-            snames.add(s.name)
+##    # validate the labelling of leafs of S
+##    snames = set()
+##    for s in S:
+##        if s.name in snames:
+##            raise ValueError("Node names of the species tree are not unique!")
+##        else:
+##            snames.add(s.name)
 
-    # names of leaves of G are stripped from the identifiers; original names are not used later,
-    # because original gene tree will be returned
-    for g in G:
-        newname = g.name.split('_')[0]
-        if newname not in snames:
-            raise ValueError("The gene %s does not correspond to any species!" % newname)
-        g.name = newname
+##    # names of leaves of G are stripped from the identifiers; original names are not used later,
+##    # because original gene tree will be returned
+##    for g in G:
+##        newname = g.name.split('_')[0]
+##        if newname not in snames:
+##            raise ValueError("The gene %s does not correspond to any species!" % newname)
+##        g.name = newname
 
     for i, g in enumerate(G.traverse(strategy="postorder")):
         g.nid = i

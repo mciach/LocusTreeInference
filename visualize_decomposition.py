@@ -1,12 +1,10 @@
-#! /usr/bin/python
 import getopt
 import sys
-import ete2
-from ete2 import NodeStyle, faces, TreeStyle
-from ete2 import NCBITaxa
-from palettable.tableau import Tableau_20
-print Tableau_20.hex_colors
-colors = Tableau_20.hex_colors
+from ete3 import Tree, NodeStyle, faces, TreeStyle
+from ete3 import NCBITaxa
+# print Tableau_20.hex_colors
+colors = ["#a0a0af", "#a8cfe6", "#237ab7", "#b3e08c", "#35aa2f", "#fe9d9c",
+                  "#f72d2f", "#fec271", "#ff8010", "#cdb4d8"]
 
 EVOLUTIONARY_RANKS = ['species', 'genus', 'family', 'order', 'class', 'phylum']
 
@@ -40,7 +38,7 @@ OPTIONS:
 """
 
 if __name__=="__main__":
-    species_tree = None
+    # species_tree = None
     gene_tree = None
     gene_format = 9
     ultrametric = 1
@@ -54,7 +52,7 @@ if __name__=="__main__":
         elif opt == "-a":
             additional_features = arg.split()
         elif opt == '-h' or not args:
-            print doc
+            print(doc)
             quit()
         elif opt == '-u':
             ultrametric = int(arg)
@@ -63,7 +61,9 @@ if __name__=="__main__":
         elif opt == '-i':
             show_IDs = int(arg)
     gene_tree = args[0]
-    gene_tree = ete2.Tree(gene_tree, format=gene_format)
+    print(gene_tree)
+    print(gene_format)
+    gene_tree = Tree(gene_tree, format=gene_format)
 
 
     #gene_tree = ete2.Tree("/home/ciach/Projects/Tree_node_classification/Comparison_with_Notung/Sequences/ABV48733.1/decomposed_tree.dnd")
