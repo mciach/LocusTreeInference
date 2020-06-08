@@ -2,7 +2,6 @@
 Methods to perform heuristic decomposition
 """
 
-import ete2
 from generic import Decomposition
 
 
@@ -115,7 +114,7 @@ def cut_tree(g, lineages):
     """
     Finds an optimal cut under a node g with respect to the reference species tree,
     represented as a dictionary of evolutionary lineages.
-    An optimal cut is chosen from egdes adjacent to the children of g.
+    An optimal cut is chosen from edges adjacent to the children of g.
     If the node is embeddable, it is returned and a warning is issued.
     The function estimates the loss cost as shown in the paper.
     :param g: ete2.Tree object
@@ -262,7 +261,7 @@ def cut_tree(g, lineages):
     #     newroot = hgtc2[cut_id - lc1 - 2]
     # else:
     #     raise RuntimeError("Wrong rootnode id!")
-    return newroot
+    # return newroot
 
 
 def decompose(gene_tree, species_tree):
@@ -274,9 +273,8 @@ def decompose(gene_tree, species_tree):
         The reference species tree. The leaf names need to be unique. The tree needs to be
         ranked, i.e. each node needs to have an integer 'rank' attribute. Ranks
         can be assigned e.g. by running the function assign_ranks(species_tree) from this package.
-    :return: list
-        A list of ete2.Tree objects, each one corresponding to one locus subtree from
-        the decomposition forest.
+    :return: Decomposition object
+        A Decomposition of the gene tree.
     """
     G = gene_tree.copy()
     S = species_tree.copy()  # the tree will be modified in assign_ranks function
