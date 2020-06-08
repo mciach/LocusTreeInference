@@ -120,6 +120,10 @@ if __name__=="__main__":
                 if not gg.coloured:
                     gg.set_style(style)
                     gg.coloured = True
+            source_style = NodeStyle(style)
+            source_style['size'] = 5
+            source_style['fgcolor'] = '#C01000'
+            g.set_style(source_style)
 
     tstyle = TreeStyle()
     #tstyle.show_leaf_name = False
